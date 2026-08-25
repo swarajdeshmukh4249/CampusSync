@@ -55,6 +55,49 @@ BASE_HEADERS = {
 }
 
 
+def _list_from_payload(data, *keys) -> list:
+    """VOLP responses vary: col_list, nested data, or a raw list."""
+    if isinstance(data, list):
+        return data
+    if not isinstance(data, dict):
+        return []
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, list):
+            return value
+    nested = data.get("data")
+    if isinstance(nested, list):
+        return nested
+    if isinstance(nested, dict):
+        for key in keys:
+            value = nested.get(key)
+            if isinstance(value, list):
+                return value
+    return []
+
+
+def _truthy(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "active", "ok"}
+    return bool(value)
+
+
+def _person_name(value) -> str:
+    if isinstance(value, dict):
+        return (
+            value.get("name")
+            or value.get("instructor_name")
+            or value.get("full_name")
+            or value.get("fname")
+            or ""
+        )
+    return str(value or "").strip()
+
+
 class VOLPClient:
     """
     Communicates with VOLP's internal API.
@@ -85,6 +128,11 @@ class VOLPClient:
         Password is discarded immediately after this call.
         Only JWT token + cookies are kept.
         """
+        username = (username or "").strip()
+        password = (password or "").strip()
+        if not username or not password:
+            return {"success": False, "message": "Username and password are required"}
+
         try:
             payload = {
                 "username": username,
@@ -94,37 +142,57 @@ class VOLPClient:
             response = await self.http.post(LOGIN_URL, json=payload)
 
             if response.status_code == 200:
-                data = response.json()
+                data = response.json() if response.content else {}
+                if not isinstance(data, dict):
+                    return {"success": False, "message": "Unexpected response from VOLP"}
 
-                if data.get("action") == "OK" or data.get("flag") == "YES":
+                flag = str(data.get("flag") or "").strip().upper()
+                action = str(data.get("action") or "").strip().upper()
+                token = (
+                    data.get("token")
+                    or data.get("Token")
+                    or data.get("access_token")
+                    or response.headers.get("Token", "")
+                    or ""
+                )
+
+                # Success: explicit OK/YES, or a session token was returned
+                if action == "OK" or flag == "YES" or (token and flag not in {"NO", "FALSE", "0"}):
                     self.is_logged_in  = True
                     self.uid           = username
-
-                    # Extract JWT token — could be in response body or headers
-                    self.jwt_token = (
-                        data.get("token") or
-                        data.get("Token") or
-                        data.get("access_token") or
-                        response.headers.get("Token", "")
-                    )
-
-                    self.user_type     = data.get("ut") or data.get("user_type", "Learner")
-                    # Cookies expire in 7 days (confirmed: Expires=Sun, 05 Apr 2026)
+                    self.jwt_token     = token
+                    self.user_type     = data.get("ut") or data.get("user_type") or "Learner"
                     self.cookie_expiry = datetime.now().timestamp() + (7 * 24 * 60 * 60)
 
                     print(f"[LOGIN] Logged in as: {username}")
-                    print(f"[LOGIN] JWT token: {'obtained' if self.jwt_token else 'not in body — check headers'}")
+                    print(f"[LOGIN] JWT token: {'obtained' if self.jwt_token else 'missing'}")
+                    print(f"[LOGIN] response keys: {sorted(data.keys())}")
+
+                    if not self.jwt_token:
+                        print("[LOGIN] Warning: no Token in body/headers — course sync may fail")
 
                     return {"success": True, "message": "Logged in successfully", "user_type": self.user_type}
 
-                else:
-                    msg = data.get("snackbar") or data.get("message") or "Invalid username or password"
-                    return {"success": False, "message": msg}
+                msg = (
+                    data.get("snackbar")
+                    or data.get("msg")
+                    or data.get("message")
+                    or "Invalid username or password"
+                )
+                print(f"[LOGIN] Rejected for {username!r}: flag={flag!r} action={action!r} msg={msg!r}")
+                hint = ""
+                if "@" not in username:
+                    hint = " Use your full VOLP email (e.g. name.prn@vit.edu), not just your PRN."
+                return {
+                    "success": False,
+                    "message": f"VOLP: {msg}.{hint} Sign in at classroom.volp.in with the same email/password to confirm.",
+                }
 
-            return {"success": False, "message": f"Server error {response.status_code}"}
+            print(f"[LOGIN] HTTP {response.status_code}: {response.text[:300]}")
+            return {"success": False, "message": f"VOLP server error {response.status_code}"}
 
         except httpx.RequestError as e:
-            return {"success": False, "message": f"Network error: {e}"}
+            return {"success": False, "message": f"Network error reaching VOLP: {e}"}
 
 
     # ── AUTHENTICATED HEADERS (with Token + Uid + Ut) ─────────────────────────
@@ -206,22 +274,33 @@ class VOLPClient:
             )
             if response.status_code == 200:
                 data = response.json()
-                return [
-                    {
-                        "course_name":  item.get("code", ""),
-                        "display_name": item.get("course", {}).get("course_name", ""),
-                        "crsid":        item.get("crsid"),
-                        "colid":        item.get("colid"),
-                        "instructor":   item.get("inst", ""),
+                items = _list_from_payload(data, "col_list", "course_list", "courses")
+                courses = []
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    course_obj = item.get("course") if isinstance(item.get("course"), dict) else {}
+                    display = (
+                        (course_obj or {}).get("course_name")
+                        or (item.get("course") if isinstance(item.get("course"), str) else "")
+                        or item.get("course_name")
+                        or item.get("title")
+                        or ""
+                    )
+                    courses.append({
+                        "course_name":  item.get("code") or item.get("course_code") or "",
+                        "display_name": display,
+                        "crsid":        item.get("crsid") or item.get("course_id") or (course_obj or {}).get("crsid"),
+                        "colid":        item.get("colid") or item.get("id"),
+                        "instructor":   _person_name(item.get("inst") or item.get("instructor") or item.get("instructor_name")),
                         "description":  item.get("description", ""),
-                        "is_active":    item.get("course_status", False),
-                        "is_archived":  item.get("is_archived", False),
+                        "is_active":    _truthy(item.get("course_status", True)),
+                        "is_archived":  _truthy(item.get("is_archived", False)),
                         "last_seen":    item.get("lastseen", ""),
                         "progress":     item.get("progress", 0.0),
-                        "asscnt":       item.get("asscnt", 0),
-                    }
-                    for item in data.get("col_list", [])
-                ]
+                        "asscnt":       item.get("asscnt") or item.get("assignment_count") or 0,
+                    })
+                return courses
         except Exception as e:
             print(f"[ERROR] get_courses: {e}")
         return []
@@ -241,16 +320,18 @@ class VOLPClient:
             if response.status_code == 200:
                 data = response.json()
                 results = []
-                for item in data.get("col_list", data.get("assignment_list", [])):
+                for item in _list_from_payload(data, "col_list", "assignment_list", "assignments"):
+                    if not isinstance(item, dict):
+                        continue
                     results.append({
-                        "assignment_id":   item.get("assid") or item.get("id"),
-                        "assignment_name": item.get("title") or item.get("name", ""),
+                        "assignment_id":   item.get("assid") or item.get("id") or item.get("assignment_id"),
+                        "assignment_name": item.get("title") or item.get("name") or item.get("assignment_name") or "Untitled assignment",
                         "description":     item.get("description", ""),
-                        "due_date":        item.get("end_date") or item.get("due_date", ""),
+                        "due_date":        item.get("end_date") or item.get("due_date") or item.get("deadline") or "",
                         "start_date":      item.get("start_date", ""),
-                        "is_submitted":    item.get("submitted", False),
+                        "is_submitted":    _truthy(item.get("submitted") or item.get("is_submitted") or item.get("isSubmitted")),
                         "submission_date": item.get("submission_date"),
-                        "max_marks":       item.get("max_marks") or item.get("marks", 0),
+                        "max_marks":       item.get("max_marks") or item.get("marks") or 0,
                         "crsid":           crsid,
                         "colid":           colid,
                     })
@@ -274,7 +355,7 @@ class VOLPClient:
             if response.status_code == 200:
                 data = response.json()
                 results = []
-                for item in data.get("col_list", data.get("announcement_list", [])):
+                for item in _list_from_payload(data, "col_list", "announcement_list", "announcements"):
                     results.append({
                         "announcement_id": item.get("id") or item.get("annid"),
                         "title":           item.get("title", "No Title"),
@@ -302,7 +383,7 @@ class VOLPClient:
             if response.status_code == 200:
                 data = response.json()
                 results = []
-                for item in data.get("col_list", data.get("material_list", [])):
+                for item in _list_from_payload(data, "col_list", "material_list", "materials"):
                     results.append({
                         "material_id":   item.get("id") or item.get("matid"),
                         "title":         item.get("title", ""),
@@ -338,14 +419,15 @@ class VOLPClient:
         print(f"[SYNC] {len(courses)} courses found")
 
         for course in courses:
-            if not course["is_active"] or course["is_archived"]:
+            if course.get("is_archived"):
+                continue
+            crsid = course.get("crsid")
+            colid = course.get("colid")
+            if crsid is None or colid is None:
                 continue
 
-            crsid = course["crsid"]
-            colid = course["colid"]
-            key   = f"{crsid}_{colid}"
-            name  = course["display_name"] or course["course_name"]
-
+            key  = f"{crsid}_{colid}"
+            name = course.get("display_name") or course.get("course_name") or key
             print(f"[SYNC] → {name}")
 
             result["assignments"][key]   = await self.get_assignments(crsid, colid)
@@ -355,6 +437,41 @@ class VOLPClient:
         print(f"[SYNC] Complete at {result['synced_at']}")
         return result
 
+
+    async def submit_assignment(self, crsid: int, colid: int, assignment_id, file_path: str, filename: str) -> dict:
+        """
+        Best-effort VOLP submit. Endpoint names vary; we try the dashboard submit URL.
+        Returns {success, message}.
+        """
+        if not self.is_logged_in:
+            return {"success": False, "message": "Not logged in to VOLP"}
+        url = "https://learner.volp.in/learnerCourseDashboard/learnerAssignmentSubmit"
+        try:
+            # Multipart upload — strip JSON Content-Type from the shared client headers
+            headers = {k: v for k, v in self._auth_headers().items()}
+            with open(file_path, "rb") as f:
+                files = {"file": (filename, f)}
+                data = {"crsid": str(crsid), "colid": str(colid), "assid": str(assignment_id)}
+                # httpx merges client.headers; unset Content-Type so boundary is set correctly
+                response = await self.http.post(
+                    url,
+                    data=data,
+                    files=files,
+                    headers={**headers, "Content-Type": None},  # type: ignore[dict-item]
+                )
+            if response.status_code == 200:
+                body = {}
+                try:
+                    body = response.json()
+                except Exception:
+                    pass
+                ok = body.get("action") == "OK" or body.get("flag") == "YES" or body.get("success") is True
+                if ok or not body:
+                    return {"success": True if ok else False, "message": body.get("message") or response.text[:200]}
+                return {"success": False, "message": body.get("snackbar") or body.get("message") or "VOLP rejected the submit"}
+            return {"success": False, "message": f"VOLP submit failed ({response.status_code})"}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
 
     async def close(self):
         await self.http.aclose()

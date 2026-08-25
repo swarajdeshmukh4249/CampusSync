@@ -28,7 +28,9 @@ class DeadlineDetector:
         (20,      "20 minutes"), # 20 minutes before ← the main one
     ]
 
-    def detect_changes(self, old_data: dict, new_data: dict) -> list:
+    def detect_changes(
+        self, old_data: dict, new_data: dict, reminder_minutes: Optional[int] = None
+    ) -> list:
         """
         Main function. Returns list of alert dicts.
         
@@ -52,7 +54,7 @@ class DeadlineDetector:
         alerts += self._detect_new_announcements(old_data, new_data)
 
         # 3. Detect approaching deadlines
-        alerts += self._detect_approaching_deadlines(new_data)
+        alerts += self._detect_approaching_deadlines(new_data, reminder_minutes)
 
         # 4. Detect new materials
         alerts += self._detect_new_materials(old_data, new_data)
@@ -122,7 +124,9 @@ class DeadlineDetector:
 
 
     # ── APPROACHING DEADLINES ──────────────────────────────────────────────────
-    def _detect_approaching_deadlines(self, new_data: dict) -> list:
+    def _detect_approaching_deadlines(
+        self, new_data: dict, reminder_minutes: Optional[int] = None
+    ) -> list:
         """
         Checks ALL current assignments and fires reminders
         if deadline is within a reminder window.
@@ -132,6 +136,15 @@ class DeadlineDetector:
         """
         alerts = []
         now    = datetime.now()
+
+        reminder_windows = self.REMINDER_WINDOWS
+        if reminder_minutes is not None:
+            try:
+                minutes = max(1, int(reminder_minutes))
+                label = "1 day" if minutes == 1440 else ("1 hour" if minutes == 60 else f"{minutes} minutes")
+                reminder_windows = [(minutes, label)]
+            except (TypeError, ValueError):
+                pass
 
         for key, assignment_list in new_data.get("assignments", {}).items():
             course_name = self._get_course_name(key, new_data)
@@ -151,7 +164,7 @@ class DeadlineDetector:
 
                 minutes_left = (due - now).total_seconds() / 60
 
-                for window_mins, window_label in self.REMINDER_WINDOWS:
+                for window_mins, window_label in reminder_windows:
                     # Fire if we're within 5 minutes of a reminder window
                     if abs(minutes_left - window_mins) <= 5:
                         urgency = "high" if window_mins <= 60 else "medium"
@@ -199,24 +212,45 @@ class DeadlineDetector:
 
 
     # ── HELPER FUNCTIONS ───────────────────────────────────────────────────────
-    def _parse_date(self, date_str: str) -> Optional[datetime]:
+    def _parse_date(self, date_str) -> Optional[datetime]:
         """Try multiple date formats VOLP might use."""
-        if not date_str:
+        if date_str is None or date_str == "":
             return None
 
+        if isinstance(date_str, (int, float)):
+            try:
+                ts = float(date_str)
+                if ts > 10_000_000_000:
+                    ts = ts / 1000.0
+                return datetime.fromtimestamp(ts)
+            except (OSError, ValueError, OverflowError):
+                return None
+
+        if not isinstance(date_str, str) or not date_str.strip():
+            return None
+
+        raw = date_str.strip().replace("Z", "")
         formats = [
             "%Y-%m-%d %H:%M:%S",
             "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S.%f",
+            "%d-%b-%Y %H:%M:%S",
             "%d-%b-%Y",
+            "%d-%m-%Y %H:%M:%S",
             "%d-%m-%Y",
             "%Y-%m-%d",
+            "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y",
         ]
         for fmt in formats:
             try:
-                return datetime.strptime(date_str.strip(), fmt)
+                return datetime.strptime(raw[:26], fmt) if fmt.endswith("%f") else datetime.strptime(raw, fmt)
             except ValueError:
                 continue
-        return None
+        try:
+            return datetime.fromisoformat(raw)
+        except ValueError:
+            return None
 
 
     def _format_due_date(self, due: datetime) -> str:

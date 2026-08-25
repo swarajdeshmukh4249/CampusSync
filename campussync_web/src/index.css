@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #05070B;
+  --color-secondary: #090D14;
+  --color-elevated: #0D121A;
+  --color-glass: rgba(255,255,255,0.05);
+  
+  --color-accent: #6C63FF;
+  --color-accent-secondary: #00D9FF;
+  --color-success: #32D583;
+  --color-warning: #FFB547;
+  --color-danger: #FF5C7A;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-primary);
+  color: #FFFFFF;
+  font-family: 'Inter', 'SF Pro Display', sans-serif;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: white;
+}
