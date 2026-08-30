@@ -23,7 +23,7 @@ import os
 import shutil
 from urllib.parse import quote
 
-from volp_client import VOLPClient
+from volp_client import VOLPClient, is_active_course
 from deadline_detector import DeadlineDetector
 from notifier import Notifier
 from database import Database
@@ -109,8 +109,22 @@ def iter_assignments(sync_data: dict):
                     yield str(key), item
 
 
+def active_course_keys(sync_data: dict) -> set:
+    keys = set()
+    for course in as_obj(sync_data.get("courses"), []):
+        if not isinstance(course, dict) or not is_active_course(course):
+            continue
+        crsid = course.get("crsid")
+        colid = course.get("colid")
+        if crsid is not None and colid is not None:
+            keys.add(f"{crsid}_{colid}")
+    return keys
+
+
 def assignment_payload(raw: dict, course_name: str) -> dict:
-    due = detector._parse_date(raw.get("due_date", ""))
+    due_raw = raw.get("due_date", "")
+    due = detector._parse_date(due_raw)
+    due_str = due.isoformat() if due else (str(due_raw) if due_raw else "")
     submitted = bool(raw.get("is_submitted"))
     urgent = False
     if due and not submitted:
@@ -119,7 +133,7 @@ def assignment_payload(raw: dict, course_name: str) -> dict:
         "assignment_id":   str(raw.get("assignment_id") or ""),
         "assignment_name": raw.get("assignment_name") or "Untitled assignment",
         "description":     raw.get("description") or "",
-        "due_date":        raw.get("due_date") or "",
+        "due_date":        due_str,
         "start_date":      raw.get("start_date") or "",
         "is_submitted":    submitted,
         "submission_date": raw.get("submission_date"),
@@ -161,7 +175,9 @@ def course_payload(course: dict, assignments_for_course: list) -> dict:
 
 def user_courses(user: dict) -> list:
     courses = as_obj(as_obj(user.get("sync_data")).get("courses"), [])
-    return courses if isinstance(courses, list) else []
+    if not isinstance(courses, list):
+        return []
+    return [c for c in courses if isinstance(c, dict) and is_active_course(c)]
 
 
 def shared_course_count(a: dict, b: dict) -> int:
@@ -337,8 +353,11 @@ async def get_assignments(user_id: int):
         raise HTTPException(status_code=404, detail="User not found")
 
     sync_data = as_obj(user.get("sync_data"))
+    allowed_keys = active_course_keys(sync_data)
     all_assignments = []
     for key, raw in iter_assignments(sync_data):
+        if allowed_keys and key and key not in allowed_keys:
+            continue
         payload = assignment_payload(raw, detector._get_course_name(key, sync_data) if key else raw.get("course_name", ""))
         all_assignments.append(payload)
 
@@ -364,8 +383,11 @@ async def get_courses(user_id: int):
     if not isinstance(raw_courses, list):
         raw_courses = []
 
+    allowed_keys = active_course_keys(sync_data)
     assignments_by_course = {}
     for key, raw in iter_assignments(sync_data):
+        if allowed_keys and key and key not in allowed_keys:
+            continue
         payload = assignment_payload(raw, detector._get_course_name(key, sync_data) if key else "")
         parts = key.split("_") if key else []
         crsid = str(raw.get("crsid") or (parts[0] if parts else ""))
@@ -373,7 +395,7 @@ async def get_courses(user_id: int):
 
     courses = []
     for course in raw_courses:
-        if not isinstance(course, dict):
+        if not isinstance(course, dict) or not is_active_course(course):
             continue
         crsid = str(course.get("crsid") or course.get("course_id") or "")
         courses.append(course_payload(course, assignments_by_course.get(crsid, [])))

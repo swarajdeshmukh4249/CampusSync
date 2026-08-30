@@ -103,6 +103,72 @@ def _truthy(value) -> bool:
     return bool(value)
 
 
+_INACTIVE_COURSE_STATUSES = {"inactive", "disabled", "expired", "completed", "closed", "archived"}
+_ARCHIVED_COURSE_STATUSES = {"archived", "closed"}
+_SUBMITTED_STATUSES = {"submitted", "completed", "done", "graded", "evaluated", "turned in"}
+_NOT_SUBMITTED_STATUSES = {"0", "false", "no", "n", "pending", "not submitted", "incomplete", "draft", "open"}
+
+
+def _is_submitted(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in _NOT_SUBMITTED_STATUSES:
+            return False
+        if v in _SUBMITTED_STATUSES or v in {"1", "true", "yes", "y", "active", "ok"}:
+            return True
+    return bool(value)
+
+
+def _extract_due_date(item: dict):
+    for key in (
+        "dueDate", "endDate", "end_date", "due_date", "deadline",
+        "submission_end_date", "submissionEndDate", "lastDate", "last_date",
+    ):
+        val = item.get(key)
+        if val is not None and val != "":
+            return val
+    return ""
+
+
+def _extract_submitted(item: dict) -> bool:
+    for key in (
+        "isSubmitted", "is_submitted", "submitted", "isCompleted", "is_completed",
+        "submissionStatus", "submission_status", "submitStatus", "submit_status",
+    ):
+        val = item.get(key)
+        if val is not None and val != "":
+            return _is_submitted(val)
+    status = str(item.get("status") or "").strip().lower()
+    if status in _SUBMITTED_STATUSES:
+        return True
+    return False
+
+
+def _course_flags(item: dict) -> tuple[bool, bool]:
+    """Return (is_active, is_archived) from VOLP's varying status fields."""
+    status = str(item.get("status") or "").strip().lower()
+    is_archived = _truthy(item.get("is_archived")) or status in _ARCHIVED_COURSE_STATUSES
+    course_status = item.get("course_status")
+    inactive = (
+        is_archived
+        or status in _INACTIVE_COURSE_STATUSES
+        or (course_status is not None and not _truthy(course_status))
+    )
+    return (not inactive, is_archived)
+
+
+def is_active_course(course: dict) -> bool:
+    if not isinstance(course, dict):
+        return False
+    if course.get("is_archived"):
+        return False
+    return bool(course.get("is_active", True))
+
+
 def _person_name(value) -> str:
     if isinstance(value, dict):
         return (
@@ -180,9 +246,9 @@ def _normalise_assignment(item: dict, crsid, colid, section: str) -> Optional[di
         "assignment_id": assignment_id,
         "assignment_name": _first_text(item, "assignment_name", "assignmentName", "title", "name", "content_name") or "Untitled assignment",
         "description": _first_text(item, "description", "content", "instructions"),
-        "due_date": item.get("end_date") or item.get("due_date") or item.get("deadline") or item.get("submission_end_date") or "",
-        "start_date": item.get("start_date") or item.get("submission_start_date") or "",
-        "is_submitted": _truthy(item.get("submitted") or item.get("is_submitted") or item.get("isSubmitted")),
+        "due_date": _extract_due_date(item),
+        "start_date": item.get("start_date") or item.get("startDate") or item.get("submission_start_date") or "",
+        "is_submitted": _extract_submitted(item),
         "submission_date": item.get("submission_date"),
         "max_marks": item.get("max_marks") or item.get("marks") or item.get("maximum_marks") or 0,
         "section": section or "Course Content",
@@ -228,6 +294,48 @@ def _merge_items(*lists: list, id_key: str) -> list:
                 seen.add(identity)
                 merged.append(item)
     return merged
+
+
+def _merge_assignment_records(existing: dict, new: dict) -> dict:
+    """Combine two assignment records, preferring richer due-date and submission data."""
+    result = existing.copy()
+    for key, val in new.items():
+        if key == "due_date":
+            if val and not result.get("due_date"):
+                result["due_date"] = val
+        elif key == "is_submitted":
+            if val:
+                result["is_submitted"] = True
+        elif key == "is_placeholder":
+            if not val:
+                result.pop("is_placeholder", None)
+        elif key in (
+            "submission_date", "assignment_name", "description", "max_marks",
+            "assignment_type", "start_date", "section",
+        ):
+            if val and not result.get(key):
+                result[key] = val
+        elif key not in result or result[key] in (None, "", 0):
+            if val not in (None, ""):
+                result[key] = val
+    return result
+
+
+def _merge_assignments(*lists: list) -> list:
+    """Merge assignment records from multiple VOLP endpoints by assignment_id."""
+    by_id: dict[str, dict] = {}
+    for values in lists:
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            identity = str(item.get("assignment_id") or "")
+            if not identity:
+                continue
+            if identity not in by_id:
+                by_id[identity] = item.copy()
+            else:
+                by_id[identity] = _merge_assignment_records(by_id[identity], item)
+    return list(by_id.values())
 
 
 def _extract_assignment_ids(content_data: dict) -> dict:
@@ -533,6 +641,7 @@ class VOLPClient:
                         or item.get("title")
                         or ""
                     )
+                    is_active, is_archived = _course_flags(item)
                     courses.append({
                         "course_name":  item.get("code") or item.get("course_code") or "",
                         "display_name": display,
@@ -540,8 +649,9 @@ class VOLPClient:
                         "colid":        item.get("colid") or item.get("id"),
                         "instructor":   _person_name(item.get("inst") or item.get("instructor") or item.get("instructor_name")),
                         "description":  item.get("description", ""),
-                        "is_active":    _truthy(item.get("course_status", True)),
-                        "is_archived":  _truthy(item.get("is_archived", False)),
+                        "is_active":    is_active,
+                        "is_archived":  is_archived,
+                        "status":       item.get("status") or item.get("course_status") or "",
                         "last_seen":    item.get("lastseen", ""),
                         "progress":     item.get("progress", 0.0),
                         "asscnt":       item.get("asscnt") or item.get("assignment_count") or 0,
@@ -576,9 +686,9 @@ class VOLPClient:
                         "assignment_id":   item.get("assid") or item.get("id") or item.get("assignment_id"),
                         "assignment_name": item.get("title") or item.get("name") or item.get("assignment_name") or "Untitled assignment",
                         "description":     item.get("description", ""),
-                        "due_date":        item.get("end_date") or item.get("due_date") or item.get("deadline") or "",
-                        "start_date":      item.get("start_date", ""),
-                        "is_submitted":    _truthy(item.get("submitted") or item.get("is_submitted") or item.get("isSubmitted")),
+                        "due_date":        _extract_due_date(item),
+                        "start_date":      item.get("start_date") or item.get("startDate") or "",
+                        "is_submitted":    _extract_submitted(item),
                         "submission_date": item.get("submission_date"),
                         "max_marks":       item.get("max_marks") or item.get("marks") or 0,
                         "crsid":           crsid,
@@ -592,7 +702,7 @@ class VOLPClient:
         if include_content:
             content_assignments, _ = await self.get_course_content(crsid, colid)
         print(f"[ASSIGNMENTS] Total results: {len(results)}, Content assignments: {len(content_assignments)}")
-        return _merge_items(results, content_assignments, id_key="assignment_id")
+        return _merge_assignments(results, content_assignments)
 
 
     async def get_course_content(self, crsid: int, colid: int) -> tuple[list, list]:
@@ -625,7 +735,7 @@ class VOLPClient:
                     materials.append(material)
 
         return (
-            _merge_items(assignments, id_key="assignment_id"),
+            _merge_assignments(assignments),
             _merge_items(materials, id_key="material_id"),
         )
 
@@ -659,9 +769,9 @@ class VOLPClient:
                             "assignment_id":   item.get("assignmentId") or item.get("id"),
                             "assignment_name": item.get("title") or item.get("assignmentName") or "Objective Assignment",
                             "description":     item.get("description", ""),
-                            "due_date":        item.get("dueDate") or item.get("endDate") or "",
+                            "due_date":        _extract_due_date(item),
                             "start_date":      item.get("startDate") or "",
-                            "is_submitted":    _truthy(item.get("isSubmitted") or item.get("submitted")),
+                            "is_submitted":    _extract_submitted(item),
                             "submission_date": item.get("submissionDate"),
                             "max_marks":       item.get("maxMarks") or item.get("totalMarks") or 0,
                             "assignment_type": "objective",
@@ -700,9 +810,9 @@ class VOLPClient:
                             "assignment_id":   item.get("assignmentId") or item.get("id"),
                             "assignment_name": item.get("title") or item.get("assignmentName") or "Subjective Assignment",
                             "description":     item.get("description") or item.get("question", ""),
-                            "due_date":        item.get("dueDate") or item.get("endDate") or "",
+                            "due_date":        _extract_due_date(item),
                             "start_date":      item.get("startDate") or "",
-                            "is_submitted":    _truthy(item.get("isSubmitted") or item.get("submitted")),
+                            "is_submitted":    _extract_submitted(item),
                             "submission_date": item.get("submissionDate"),
                             "max_marks":       item.get("maxMarks") or item.get("totalMarks") or 0,
                             "assignment_type": "subjective",
@@ -741,9 +851,9 @@ class VOLPClient:
                             "assignment_id":   item.get("handsOnId") or item.get("id") or item.get("assignmentId"),
                             "assignment_name": item.get("title") or item.get("handsOnName") or "Hands-On Assignment",
                             "description":     item.get("description") or "",
-                            "due_date":        item.get("dueDate") or item.get("endDate") or "",
+                            "due_date":        _extract_due_date(item),
                             "start_date":      item.get("startDate") or "",
-                            "is_submitted":    _truthy(item.get("isSubmitted") or item.get("submitted")),
+                            "is_submitted":    _extract_submitted(item),
                             "submission_date": item.get("submissionDate"),
                             "max_marks":       item.get("maxMarks") or item.get("totalMarks") or 0,
                             "assignment_type": "hands_on",
@@ -777,9 +887,9 @@ class VOLPClient:
                                     "assignment_id":   item.get("handsOnId") or item.get("id") or item.get("assignmentId"),
                                     "assignment_name": item.get("title") or item.get("handsOnName") or "Hands-On Assignment",
                                     "description":     item.get("description") or "",
-                                    "due_date":        item.get("dueDate") or item.get("endDate") or "",
+                                    "due_date":        _extract_due_date(item),
                                     "start_date":      item.get("startDate") or "",
-                                    "is_submitted":    _truthy(item.get("isSubmitted") or item.get("submitted")),
+                                    "is_submitted":    _extract_submitted(item),
                                     "submission_date": item.get("submissionDate"),
                                     "max_marks":       item.get("maxMarks") or item.get("totalMarks") or 0,
                                     "assignment_type": "hands_on",
@@ -804,9 +914,9 @@ class VOLPClient:
                                         "assignment_id":   item.get("handsOnId") or item.get("id") or item.get("assignmentId"),
                                         "assignment_name": item.get("title") or item.get("handsOnName") or "Hands-On Assignment",
                                         "description":     item.get("description") or "",
-                                        "due_date":        item.get("dueDate") or item.get("endDate") or "",
+                                        "due_date":        _extract_due_date(item),
                                         "start_date":      item.get("startDate") or "",
-                                        "is_submitted":    _truthy(item.get("isSubmitted") or item.get("submitted")),
+                                        "is_submitted":    _extract_submitted(item),
                                         "submission_date": item.get("submissionDate"),
                                         "max_marks":       item.get("maxMarks") or item.get("totalMarks") or 0,
                                         "assignment_type": "hands_on",
@@ -844,9 +954,9 @@ class VOLPClient:
                         "assignment_id":   item.get("testId") or item.get("id"),
                         "assignment_name": item.get("title") or item.get("testName") or "Test/Assessment",
                         "description":     item.get("description", ""),
-                        "due_date":        item.get("endDate") or item.get("scheduledDate") or "",
+                        "due_date":        _extract_due_date(item) or item.get("scheduledDate") or "",
                         "start_date":      item.get("startDate") or item.get("scheduledDate") or "",
-                        "is_submitted":    _truthy(item.get("isCompleted") or item.get("isSubmitted")),
+                        "is_submitted":    _extract_submitted(item),
                         "submission_date": item.get("completionDate"),
                         "max_marks":       item.get("maxMarks") or item.get("totalMarks") or 0,
                         "assignment_type": "test",
@@ -975,13 +1085,11 @@ class VOLPClient:
         }
 
         courses = await self.get_courses()
-        result["courses"] = courses
-        print(f"[SYNC] {len(courses)} courses found")
+        active_courses = [c for c in courses if is_active_course(c)]
+        result["courses"] = active_courses
+        print(f"[SYNC] {len(active_courses)} active courses ({len(courses) - len(active_courses)} archived/inactive skipped)")
 
-        for course in courses:
-            if course.get("is_archived"):
-                print(f"[SYNC] Skipping archived course: {course.get('display_name') or course.get('course_name')}")
-                continue
+        for course in active_courses:
             crsid = course.get("crsid")
             colid = course.get("colid")
             if crsid is None or colid is None:
@@ -1011,14 +1119,13 @@ class VOLPClient:
             print(f"[SYNC]   Dashboard assignments: {len(dashboard_assignments)}, Content assignments: {len(content_assignments)}")
 
             # Merge all assignment types
-            all_assignments = _merge_items(
+            all_assignments = _merge_assignments(
                 dashboard_assignments,
                 objective_assignments,
                 subjective_assignments,
                 hands_on_assignments,
                 tests,
                 content_assignments,
-                id_key="assignment_id"
             )
 
             # Only create placeholders if we have assignment IDs but NO real assignments at all
