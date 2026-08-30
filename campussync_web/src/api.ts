@@ -51,6 +51,7 @@ export const api = {
   refresh: (userId: number) => postJson('/auth/refresh', { user_id: userId }),
   assignments: (userId: number) => getJson(`/assignments/${userId}`),
   courses: (userId: number) => getJson(`/courses/${userId}`),
+  materials: (userId: number) => getJson(`/materials/${userId}`),
   friends: (userId: number) => getJson(`/friends/${userId}`),
   groups: (userId: number) => getJson(`/groups/user/${userId}`),
   submissions: (userId: number) => getJson(`/submissions/${userId}`),

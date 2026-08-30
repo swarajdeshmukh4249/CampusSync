@@ -1,2 +1,8 @@
 supabase
 python-multipart
+httpx
+fastapi
+uvicorn[standard]
+pydantic
+apscheduler
+python-dotenv

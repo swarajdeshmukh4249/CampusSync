@@ -12,6 +12,7 @@ Run with:
 """
 
 from fastapi import FastAPI, HTTPException, File, Form, UploadFile
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -20,6 +21,7 @@ from uuid import uuid4
 import json
 import os
 import shutil
+from urllib.parse import quote
 
 from volp_client import VOLPClient
 from deadline_detector import DeadlineDetector
@@ -127,6 +129,7 @@ def assignment_payload(raw: dict, course_name: str) -> dict:
         "colid":           raw.get("colid"),
         "urgent":          urgent or bool(raw.get("urgent")),
         "status":          "Submitted" if submitted else "Pending",
+        "assignment_type": raw.get("assignment_type") or "general",
     }
 
 
@@ -453,8 +456,47 @@ async def get_materials(user_id: int):
                 if isinstance(m, dict):
                     item = dict(m)
                     item["course_name"] = detector._get_course_name(key, sync_data)
+                    item["download_url"] = f"/materials/{user_id}/download?material_id={quote(str(item.get('material_id', '')), safe='')}"
                     all_materials.append(item)
     return {"materials": all_materials}
+
+
+@app.get("/materials/{user_id}/download")
+async def download_material(user_id: int, material_id: str):
+    """Serve a teacher file through the restored VOLP session when needed."""
+    user = await db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    sync_data = as_obj(user.get("sync_data"))
+    source = None
+    materials = as_obj(sync_data.get("materials"), {})
+    if isinstance(materials, dict):
+        for mat_list in materials.values():
+            for material in mat_list or []:
+                if isinstance(material, dict) and str(material.get("material_id")) == material_id:
+                    source = material
+                    break
+            if source:
+                break
+    if not source or not source.get("file_url"):
+        raise HTTPException(status_code=404, detail="This material has no downloadable file")
+
+    client = VOLPClient()
+    if not client.restore_session(as_obj(user.get("cookies"))):
+        await client.close()
+        raise HTTPException(status_code=401, detail="Your VOLP session expired. Please sign in again.")
+    try:
+        body, media_type, disposition = await client.download_material(source["file_url"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not download the file from VOLP: {e}")
+    finally:
+        await client.close()
+
+    headers = {"Content-Disposition": disposition} if disposition else {}
+    return Response(content=body, media_type=media_type, headers=headers)
 
 
 @app.post("/submissions/schedule")

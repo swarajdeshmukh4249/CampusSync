@@ -1,0 +1,22 @@
+commands to run the project:
+
+# Backend (Python/FastAPI)
+cd campussync
+source venv311/bin/activate  # Use Python 3.11 venv
+pip install -r ../requirements.txt
+uvicorn main:app --reload --port 8081
+
+# Web Frontend (React/Vite)
+cd campussync_web
+npm install
+npm run dev
+
+# Mobile App (Flutter)
+cd campussync_app
+flutter pub get
+flutter run  # or flutter run -d chrome for web
+
+# Test VOLP endpoints
+cd campussync
+source venv311/bin/activate
+python ../test_new_endpoints.py <your_volp_email> <your_volp_password>
