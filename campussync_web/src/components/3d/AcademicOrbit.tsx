@@ -1,8 +1,7 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Sphere, MeshDistortMaterial, Float, Stars, Html } from '@react-three/drei';
+import { Sphere, MeshDistortMaterial, Float, Stars } from '@react-three/drei';
 import * as THREE from 'three';
-import { motion } from 'framer-motion';
 
 interface AcademicOrbitProps {
   scrollProgress?: number;
@@ -13,15 +12,16 @@ export default function AcademicOrbit({ scrollProgress = 0, theme = 'dark' }: Ac
   const coreRef = useRef<THREE.Mesh>(null);
   const groupRef = useRef<THREE.Group>(null);
   const { mouse } = useThree();
-  const [hoveredObject, setHoveredObject] = useState<string | null>(null);
 
-  // Academic objects data
-  const academicObjects = [
-    { id: 'assignment', position: [3, 2, 0], label: 'Assignment_04.pdf', subtitle: 'Due tomorrow', color: '#7C6CFF' },
-    { id: 'deadline', position: [-4, 1, 2], label: '24H', subtitle: 'Time remaining', color: '#FFB84D' },
-    { id: 'course', position: [2, -3, -1], label: 'DBMS', subtitle: 'In progress', color: '#00D9FF' },
-    { id: 'people', position: [-3, -2, -2], label: '12', subtitle: 'Classmates', color: '#32D583' },
-    { id: 'notification', position: [0, 4, -3], label: 'Synced', subtitle: 'Just now', color: '#FF5C7A' },
+  // Purely decorative orbiting motes. These deliberately carry no text: the
+  // background sits behind real coursework, and a floating "Assignment_04.pdf —
+  // due tomorrow" reads as if it were the student's own.
+  const orbitingMotes = [
+    { id: 'a', position: [3, 2, 0], color: '#7C6CFF' },
+    { id: 'b', position: [-4, 1, 2], color: '#FFB84D' },
+    { id: 'c', position: [2, -3, -1], color: '#00D9FF' },
+    { id: 'd', position: [-3, -2, -2], color: '#32D583' },
+    { id: 'e', position: [0, 4, -3], color: '#FF5C7A' },
   ];
 
   useFrame((state) => {
@@ -98,16 +98,9 @@ export default function AcademicOrbit({ scrollProgress = 0, theme = 'dark' }: Ac
       <OrbitRing radius={3.5} rotation={[Math.PI / 3, 0, 0]} color={theme === 'dark' ? 'rgba(0,217,255,0.2)' : 'rgba(0,168,199,0.2)'} />
       <OrbitRing radius={4.5} rotation={[Math.PI / 6, Math.PI / 4, 0]} color={theme === 'dark' ? 'rgba(124,108,255,0.15)' : 'rgba(99,91,255,0.15)'} />
 
-      {/* Academic Objects */}
-      {academicObjects.map((obj, index) => (
-        <AcademicObject
-          key={obj.id}
-          {...obj}
-          index={index}
-          onHover={setHoveredObject}
-          isHovered={hoveredObject === obj.id}
-          theme={theme}
-        />
+      {/* Orbiting motes */}
+      {orbitingMotes.map((mote, index) => (
+        <OrbitingMote key={mote.id} position={mote.position} color={mote.color} index={index} />
       ))}
     </group>
   );
@@ -146,77 +139,40 @@ function OrbitRing({ radius, rotation, color }: { radius: number; rotation: [num
   );
 }
 
-function AcademicObject({ 
-  position, 
-  label, 
-  subtitle, 
-  color, 
+function OrbitingMote({
+  position,
+  color,
   index,
-  onHover,
-  isHovered,
-  theme 
-}: any) {
+}: {
+  position: number[];
+  color: string;
+  index: number;
+}) {
   const groupRef = useRef<THREE.Group>(null);
   const basePosition = position as [number, number, number];
-  
+
   useFrame((state) => {
     const time = state.clock.getElapsedTime() + index * 0.5;
-    if (groupRef.current) {
-      // Orbit animation
-      const orbitSpeed = 0.3 + index * 0.1;
-      const orbitRadius = Math.sqrt(basePosition[0] ** 2 + basePosition[2] ** 2);
-      
-      groupRef.current.position.x = Math.sin(time * orbitSpeed) * orbitRadius;
-      groupRef.current.position.z = Math.cos(time * orbitSpeed) * orbitRadius;
-      groupRef.current.position.y = Math.sin(time * orbitSpeed * 2) * 0.5 + basePosition[1];
-      
-      // Hover effect
-      if (isHovered) {
-        groupRef.current.position.y += 0.3;
-        groupRef.current.scale.setScalar(1.2);
-      } else {
-        groupRef.current.scale.setScalar(1);
-      }
-    }
+    if (!groupRef.current) return;
+    const orbitSpeed = 0.3 + index * 0.1;
+    const orbitRadius = Math.sqrt(basePosition[0] ** 2 + basePosition[2] ** 2);
+
+    groupRef.current.position.x = Math.sin(time * orbitSpeed) * orbitRadius;
+    groupRef.current.position.z = Math.cos(time * orbitSpeed) * orbitRadius;
+    groupRef.current.position.y = Math.sin(time * orbitSpeed * 2) * 0.5 + basePosition[1];
   });
 
   return (
-    <group 
-      ref={groupRef} 
-      position={basePosition}
-      onPointerOver={() => onHover(label)}
-      onPointerOut={() => onHover(null)}
-    >
-      {/* Glowing sphere */}
+    <group ref={groupRef} position={basePosition}>
       <Sphere args={[0.3, 32, 32]}>
-        <meshStandardMaterial 
-          color={color} 
-          emissive={color} 
-          emissiveIntensity={isHovered ? 0.8 : 0.3}
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={0.3}
           transparent
           opacity={0.9}
         />
       </Sphere>
-      
-      {/* Label */}
-      <Html 
-        position={[0, 0.6, 0]} 
-        center
-        className="pointer-events-none"
-      >
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: isHovered ? 1 : 0.7, y: isHovered ? 0 : 10 }}
-          className="bg-[var(--glass-bg)] backdrop-blur-md border border-[var(--glass-border)] rounded-xl px-4 py-2 text-center"
-          style={{
-            color: theme === 'dark' ? '#fff' : '#101218',
-            minWidth: '120px'
-          }}
-        >
-          <div className="text-sm font-semibold">{label}</div>
-          <div className="text-xs opacity-60">{subtitle}</div>
-        </motion.div>
-      </Html>
     </group>
   );
 }

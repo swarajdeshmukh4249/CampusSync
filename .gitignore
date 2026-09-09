@@ -1,0 +1,29 @@
+# Secrets — never commit these.
+# .env holds the Supabase service_role key and CAMPUSSYNC_SECRET_KEY, the
+# Fernet key that encrypts every student's VOLP password. Committing it would
+# put that key in the same place as the data it protects.
+.env
+.env.*
+!.env.example
+firebase-key.json
+
+# Python
+__pycache__/
+*.py[cod]
+venv311/
+.venv/
+
+# Node
+node_modules/
+dist/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Scratch browser-test scripts used during development.
+*.mjs
+
+# Captured VOLP responses — contains your coursework.
+campussync/volp_dump/

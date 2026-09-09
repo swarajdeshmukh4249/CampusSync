@@ -2,7 +2,8 @@
 CampusSync - FastAPI Backend
 -----------------------------
 Main server. Handles:
-  • User registration & login (stores cookies, NOT passwords)
+  • User registration & login (stores cookies + the encrypted VOLP password,
+    so scheduled submissions can re-login once the cookies expire)
   • Background polling of VOLP every 15 minutes
   • Triggering push notifications & WhatsApp alerts
   • REST API for the Flutter app and web dashboard
@@ -23,10 +24,11 @@ import os
 import shutil
 from urllib.parse import quote
 
-from volp_client import VOLPClient, is_active_course
+from volp_client import VOLPClient, is_active_course, assignment_volp_url
 from deadline_detector import DeadlineDetector
 from notifier import Notifier
 from database import Database
+from crypto import CredentialCipher
 
 
 app = FastAPI(
@@ -46,6 +48,7 @@ db        = Database()
 notifier  = Notifier()
 scheduler = AsyncIOScheduler()
 detector  = DeadlineDetector()
+cipher    = CredentialCipher()
 
 
 def as_obj(value, default=None):
@@ -121,7 +124,25 @@ def active_course_keys(sync_data: dict) -> set:
     return keys
 
 
-def assignment_payload(raw: dict, course_name: str, user_id: int) -> dict:
+# Scheduled submissions are held on the server until they fire; cap them so a
+# single upload cannot fill the disk.
+MAX_UPLOAD_BYTES = int(os.getenv("CAMPUSSYNC_MAX_UPLOAD_MB", "25")) * 1024 * 1024
+
+
+def public_submission(row: dict) -> dict:
+    """A scheduled submission as the client should see it — no server paths."""
+    return {k: v for k, v in row.items() if k != "stored_path"}
+
+
+def split_course_key(key: str) -> tuple:
+    """"<crsid>_<colid>" → (crsid, colid). Either may be missing."""
+    parts = str(key or "").split("_")
+    crsid = parts[0] if len(parts) > 0 and parts[0] else None
+    colid = parts[1] if len(parts) > 1 and parts[1] else None
+    return crsid, colid
+
+
+def assignment_payload(raw: dict, course_name: str, user_id: int, key: str = "") -> dict:
     due_raw = raw.get("due_date", "")
     due = detector._parse_date(due_raw)
     due_str = due.isoformat() if due else (str(due_raw) if due_raw else "")
@@ -134,6 +155,13 @@ def assignment_payload(raw: dict, course_name: str, user_id: int) -> dict:
         f"/assignments/{user_id}/download?assignment_id={quote(assignment_id, safe='')}"
         if raw.get("file_url") else None
     )
+    # VOLP only ever returns these on the course-content path, so fall back to
+    # the "<crsid>_<colid>" key the assignment was filed under. Without them a
+    # scheduled submission has nowhere to upload to.
+    key_crsid, key_colid = split_course_key(key)
+    crsid = raw.get("crsid") if raw.get("crsid") is not None else key_crsid
+    colid = raw.get("colid") if raw.get("colid") is not None else key_colid
+    is_placeholder = bool(raw.get("is_placeholder"))
     return {
         "assignment_id":   assignment_id,
         "assignment_name": raw.get("assignment_name") or "Untitled assignment",
@@ -145,11 +173,15 @@ def assignment_payload(raw: dict, course_name: str, user_id: int) -> dict:
         "submission_date": raw.get("submission_date"),
         "max_marks":       raw.get("max_marks") or 0,
         "course_name":     course_name or raw.get("course_name") or "Unknown course",
-        "crsid":           raw.get("crsid"),
-        "colid":           raw.get("colid"),
+        "crsid":           crsid,
+        "colid":           colid,
         "urgent":          urgent or bool(raw.get("urgent")),
         "status":          "Submitted" if submitted else "Pending",
         "assignment_type": raw.get("assignment_type") or "general",
+        "is_placeholder":  is_placeholder,
+        # Deep link to this assignment on VOLP, so a card we could not fully
+        # sync still takes the student somewhere useful.
+        "volp_url":        assignment_volp_url(crsid, colid, assignment_id, raw.get("assignment_type")),
     }
 
 
@@ -317,9 +349,14 @@ async def login(request: LoginRequest):
     sync_data = await client.full_sync()
     await client.close()
 
+    # Session cookies expire, so a submission scheduled for tomorrow cannot rely
+    # on them. The password is kept, encrypted, purely so we can re-login at the
+    # moment the student asked us to hand their file in. Students can wipe it
+    # from Settings (POST /auth/forget-credentials/{user_id}).
     user_id = await db.upsert_user({
         "username":         request.username,
         "cookies":          cookies,
+        "password_enc":     cipher.encrypt(request.password),
         "fcm_token":        request.fcm_token,
         "whatsapp_number":  request.whatsapp_number,
         "whatsapp_enabled": True,
@@ -334,8 +371,35 @@ async def login(request: LoginRequest):
         "user_id":  user_id,
         "username": request.username,
         "courses":  sync_data.get("courses", []),
+        "can_schedule_submissions": cipher.enabled,
         "message":  "Logged in successfully! We'll keep an eye on your assignments 👀"
     }
+
+
+async def volp_client_for(user: dict) -> tuple:
+    """Return (client, error). Restores the saved cookies, and falls back to a
+    full re-login with the stored password when they have expired — this is what
+    lets a submission scheduled days ago still go through."""
+    client = VOLPClient()
+    if client.restore_session(as_obj(user.get("cookies"))):
+        return client, None
+
+    password = cipher.decrypt(user.get("password_enc"))
+    if not password:
+        await client.close()
+        return None, "Your VOLP session expired and no saved login is available. Please sign in again."
+
+    result = await client.login(user["username"], password)
+    if not result.get("success"):
+        await client.close()
+        return None, f"Could not sign in to VOLP: {result.get('message', 'unknown error')}"
+
+    # Persist the fresh cookies so the next call skips the login round-trip.
+    try:
+        await db.update_user_cookies(user["id"], client.get_session_cookies())
+    except Exception as e:
+        print(f"[AUTH] Could not persist refreshed cookies for {user['username']}: {e}")
+    return client, None
 
 
 @app.post("/auth/refresh")
@@ -364,7 +428,12 @@ async def get_assignments(user_id: int):
     for key, raw in iter_assignments(sync_data):
         if allowed_keys and key and key not in allowed_keys:
             continue
-        payload = assignment_payload(raw, detector._get_course_name(key, sync_data) if key else raw.get("course_name", ""), user_id)
+        payload = assignment_payload(
+            raw,
+            detector._get_course_name(key, sync_data) if key else raw.get("course_name", ""),
+            user_id,
+            key,
+        )
         all_assignments.append(payload)
 
     def sort_key(a):
@@ -394,9 +463,10 @@ async def get_courses(user_id: int):
     for key, raw in iter_assignments(sync_data):
         if allowed_keys and key and key not in allowed_keys:
             continue
-        payload = assignment_payload(raw, detector._get_course_name(key, sync_data) if key else "", user_id)
-        parts = key.split("_") if key else []
-        crsid = str(raw.get("crsid") or (parts[0] if parts else ""))
+        payload = assignment_payload(
+            raw, detector._get_course_name(key, sync_data) if key else "", user_id, key
+        )
+        crsid = str(payload.get("crsid") or "")
         assignments_by_course.setdefault(crsid, []).append(payload)
 
     courses = []
@@ -426,7 +496,6 @@ async def get_friends(user_id: int):
                 "user_id": other["id"],
                 "username": other["username"],
                 "shared_courses": shared,
-                "submitted": False,
                 "source": "shared_course",
             }
 
@@ -440,7 +509,6 @@ async def get_friends(user_id: int):
                 "user_id": member["id"],
                 "username": member["username"],
                 "shared_courses": shared_course_count(user, member),
-                "submitted": False,
                 "source": "group",
             })
             entry["source"] = "group"
@@ -578,12 +646,46 @@ async def schedule_submission(
     due = detector._parse_date(scheduled_for.replace("T", " "))
     if not due:
         raise HTTPException(status_code=400, detail="Invalid schedule time")
+    if due <= datetime.now():
+        raise HTTPException(
+            status_code=400,
+            detail="Pick a time in the future — CampusSync cannot submit retroactively.",
+        )
+    if not str(crsid).strip() or not str(colid).strip():
+        raise HTTPException(
+            status_code=400,
+            detail="This assignment is missing its VOLP course ids, so we cannot submit it for you. "
+                   "Refresh your sync, or hand it in on VOLP directly.",
+        )
+    if not cipher.enabled or not user.get("password_enc"):
+        raise HTTPException(
+            status_code=409,
+            detail="No saved VOLP login, so we could not sign in for you at submission time. "
+                   "Please sign in to CampusSync again, then reschedule.",
+        )
 
     uploads = db._uploads_dir()
     stored_name = f"{uuid4().hex}_{os.path.basename(file.filename or 'upload.bin')}"
     dest = os.path.join(uploads, stored_name)
-    with open(dest, "wb") as out:
-        shutil.copyfileobj(file.file, out)
+    size = 0
+    try:
+        with open(dest, "wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File is larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+                    )
+                out.write(chunk)
+    except Exception:
+        # Never leave a partial upload behind on disk.
+        if os.path.exists(dest):
+            os.remove(dest)
+        raise
+    if size == 0:
+        os.remove(dest)
+        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
 
     row = await db.create_scheduled_submission({
         "user_id": user_id,
@@ -595,11 +697,24 @@ async def schedule_submission(
         "scheduled_for": due.isoformat(sep=" "),
         "original_filename": file.filename,
         "stored_path": dest,
+        "file_size": size,
         "status": "scheduled",
         "error": None,
         "created_at": datetime.now().isoformat(sep=" "),
     })
-    return {"success": True, "submission": row}
+    return {"success": True, "submission": public_submission(row)}
+
+
+@app.delete("/submissions/{user_id}/{submission_id}")
+async def cancel_submission(user_id: int, submission_id: int):
+    """Cancel a submission that has not fired yet and delete the held file."""
+    user = await db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    removed = await db.delete_scheduled_submission(submission_id, user_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Scheduled submission not found")
+    return {"success": True}
 
 
 @app.get("/submissions/{user_id}")
@@ -607,7 +722,9 @@ async def list_submissions(user_id: int):
     user = await db.get_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"submissions": await db.list_scheduled_submissions(user_id)}
+    rows = await db.list_scheduled_submissions(user_id)
+    rows.sort(key=lambda r: str(r.get("scheduled_for") or ""))
+    return {"submissions": [public_submission(r) for r in rows]}
 
 
 @app.post("/auth/delete-account/{user_id}")
@@ -641,6 +758,24 @@ async def get_settings(user_id: int):
         "push_enabled": bool(user.get("push_enabled", True)),
         "reminder_minutes": int(user.get("reminder_minutes") or 20),
         "whatsapp_number": user.get("whatsapp_number") or "",
+        # Whether a saved VOLP login exists, so the UI can tell the student
+        # if scheduled submissions will survive their session expiring.
+        "credentials_saved": bool(user.get("password_enc")) and cipher.enabled,
+        "username": user.get("username") or "",
+    }
+
+
+@app.post("/auth/forget-credentials/{user_id}")
+async def forget_credentials(user_id: int):
+    """Wipe the saved VOLP password. Anything already scheduled will still be
+    attempted, but only for as long as the current session cookies last."""
+    user = await db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.clear_stored_credentials(user_id)
+    return {
+        "success": True,
+        "message": "Saved VOLP login deleted. Sign in again to re-enable scheduled submissions.",
     }
 
 
@@ -661,19 +796,15 @@ async def sync_single_user(user: dict):
     username = user["username"]
     print(f"  [SYNC] User: {username}")
 
-    client  = VOLPClient()
-    cookies = as_obj(user.get("cookies"))
-    session_valid = client.restore_session(cookies)
-
-    if not session_valid:
-        print(f"  [SYNC] Session expired for {username}, notifying...")
+    client, auth_error = await volp_client_for(user)
+    if not client:
+        print(f"  [SYNC] {auth_error}")
         if user.get("fcm_token"):
             await notifier.send_push(
                 fcm_token = user["fcm_token"],
                 title     = "⚠️ Please Re-login to CampusSync",
                 body      = "Your VOLP session has expired. Open the app to refresh.",
             )
-        await client.close()
         return
 
     old_data  = as_obj(user.get("sync_data"))
@@ -729,14 +860,13 @@ async def process_due_submissions():
             await db.update_submission(row["id"], {"status": "failed", "error": "User not found"})
             continue
 
-        client = VOLPClient()
-        cookies = as_obj(user.get("cookies"))
-        if not client.restore_session(cookies):
-            await client.close()
+        client, auth_error = await volp_client_for(user)
+        if not client:
             await db.update_submission(row["id"], {
                 "status": "failed",
-                "error": "VOLP session expired — sign in again, then reschedule.",
+                "error": auth_error,
             })
+            await notify_submission_result(user, row, ok=False, detail=auth_error)
             continue
 
         crsid = row.get("crsid") or 0
@@ -752,12 +882,41 @@ async def process_due_submissions():
         )
         await client.close()
         if result.get("success"):
-            await db.update_submission(row["id"], {"status": "submitted", "error": None})
-        else:
             await db.update_submission(row["id"], {
-                "status": "queued_local",
-                "error": result.get("message") or "Could not submit to VOLP automatically. File is saved — submit from VOLP if needed.",
+                "status": "submitted",
+                "error": None,
+                "submitted_at": datetime.now().isoformat(sep=" "),
             })
+            await notify_submission_result(user, row, ok=True)
+        else:
+            detail = result.get("message") or (
+                "Could not submit to VOLP automatically. Your file is saved — hand it in on VOLP."
+            )
+            await db.update_submission(row["id"], {"status": "queued_local", "error": detail})
+            await notify_submission_result(user, row, ok=False, detail=detail)
+
+
+async def notify_submission_result(user: dict, row: dict, ok: bool, detail: str = ""):
+    """Tell the student what happened — a submission that silently failed while
+    they were asleep is worse than no automation at all."""
+    name = row.get("assignment_name") or "your assignment"
+    course = row.get("course_name") or ""
+    if ok:
+        title = "✅ Submitted to VOLP"
+        body = f"{name}{' • ' + course if course else ''} was handed in on time."
+    else:
+        title = "❌ Scheduled submission failed"
+        body = f"{name}{' • ' + course if course else ''} — {detail}"
+
+    if user.get("push_enabled", True) and user.get("fcm_token"):
+        await notifier.send_push(
+            fcm_token=user["fcm_token"], title=title, body=body,
+            data={"type": "scheduled_submission", "assignment_id": str(row.get("assignment_id", ""))},
+        )
+    if user.get("whatsapp_enabled", True) and user.get("whatsapp_number"):
+        await notifier.send_whatsapp(
+            to=user["whatsapp_number"], message=f"*{title}*\n{body}\n\n_CampusSync_"
+        )
 
 
 @app.on_event("startup")

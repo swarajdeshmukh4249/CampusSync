@@ -230,16 +230,43 @@ class DeadlineDetector:
             return None
 
         raw = date_str.strip().replace("Z", "")
+
+        # VOLP renders deadlines as "05-09-2026 00:00 AM" and, on the
+        # subjective screen, "15/09/2026 23:59 PM" — a 24-hour clock with a
+        # meridiem glued on. Drop a meridiem that contradicts the hour so the
+        # 24-hour formats below can read it.
+        meridiem = raw[-2:].upper()
+        if meridiem in ("AM", "PM"):
+            head = raw[:-2].strip()
+            hour_token = head.split(" ")[-1].split(":")[0] if ":" in head else ""
+            # Hour 0 or >12 cannot belong to a 12-hour clock: VOLP writes
+            # midnight as "00:00 AM" rather than "12:00 AM".
+            if hour_token.isdigit() and (int(hour_token) > 12 or int(hour_token) == 0):
+                raw = head
+
         formats = [
             "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
             "%Y-%m-%dT%H:%M:%S",
             "%Y-%m-%dT%H:%M:%S.%f",
+            "%Y-%m-%dT%H:%M",
             "%d-%b-%Y %H:%M:%S",
+            "%d-%b-%Y %H:%M",
+            "%d-%b-%Y %I:%M %p",
             "%d-%b-%Y",
+            "%d %b %Y %H:%M:%S",
+            "%d %b %Y %H:%M",
+            "%d %b %Y",
             "%d-%m-%Y %H:%M:%S",
+            "%d-%m-%Y %H:%M",
+            "%d-%m-%Y %I:%M %p",
+            "%d-%m-%Y %I:%M:%S %p",
             "%d-%m-%Y",
             "%Y-%m-%d",
             "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y %H:%M",
+            "%d/%m/%Y %I:%M %p",
+            "%d/%m/%Y %I:%M:%S %p",
             "%d/%m/%Y",
         ]
         for fmt in formats:
@@ -280,12 +307,30 @@ class DeadlineDetector:
 
 
     def _get_course_name(self, key: str, data: dict) -> str:
-        """Find course name from crsid_colid key."""
-        parts = key.split("_")
+        """Find course name from a "crsid_colid" key.
+
+        Matches on both ids — several courses can share a colid — and compares
+        them as strings so a non-numeric id from VOLP never raises.
+        """
+        parts = str(key or "").split("_")
         if len(parts) < 2:
             return "Unknown Course"
-        colid = int(parts[1])
-        for course in data.get("courses", []):
-            if course.get("colid") == colid:
-                return course.get("display_name") or course.get("course_name", "Unknown")
+        crsid, colid = parts[0], parts[1]
+        courses = data.get("courses") or []
+        if not isinstance(courses, list):
+            return "Unknown Course"
+
+        def title(course: dict) -> str:
+            return course.get("display_name") or course.get("course_name") or "Unknown Course"
+
+        for course in courses:
+            if not isinstance(course, dict):
+                continue
+            if str(course.get("crsid")) == crsid and str(course.get("colid")) == colid:
+                return title(course)
+        # Fall back to crsid alone: content-derived keys sometimes carry a
+        # different colid than the course list does.
+        for course in courses:
+            if isinstance(course, dict) and str(course.get("crsid")) == crsid:
+                return title(course)
         return "Unknown Course"

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import LoginPage from './components/LoginPage';
 import Dashboard from './components/Dashboard';
@@ -7,20 +7,43 @@ import Courses from './components/Courses';
 import Assignments from './components/Assignments';
 import Calendar from './components/Calendar';
 import Friends from './components/Friends';
+import Settings from './components/Settings';
+import type { Page as AppPage } from './components/ui/AppShell';
 
-type Page = 'landing' | 'login' | 'dashboard' | 'courses' | 'assignments' | 'calendar' | 'friends';
+type Page = 'landing' | 'login' | AppPage;
+
+const SIGNED_IN_PAGES: Page[] = [
+  'dashboard', 'courses', 'assignments', 'calendar', 'friends', 'settings',
+];
+
+function storedUserId(): number | null {
+  const raw = localStorage.getItem('cs_user_id');
+  if (!raw) return null;
+  const id = Number(raw);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
 
 export default function App() {
-  const [userId, setUserId] = useState<number | null>(() => {
-    const stored = localStorage.getItem('cs_user_id');
-    return stored ? Number(stored) : null;
-  });
+  const [userId, setUserId] = useState<number | null>(storedUserId);
   const [username, setUsername] = useState<string>(() => localStorage.getItem('cs_username') || '');
+
   const [currentPage, setCurrentPage] = useState<Page>(() => {
-    const stored = localStorage.getItem('cs_page');
-    return (stored as Page) || 'landing';
+    const stored = (localStorage.getItem('cs_page') as Page) || 'landing';
+    // A signed-out visitor with a stale page saved used to land on a route that
+    // rendered nothing at all — a blank screen with no way back.
+    if (SIGNED_IN_PAGES.includes(stored) && storedUserId() === null) return 'landing';
+    return stored;
   });
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('cs_theme') as 'dark' | 'light') || 'dark');
+
+  const [theme, setTheme] = useState<'dark' | 'light'>(
+    () => (localStorage.getItem('cs_theme') as 'dark' | 'light') || 'dark',
+  );
+
+  // Keep the document in step with the theme so the page background matches
+  // even outside the React tree.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   function toggleTheme() {
     setTheme(current => {
@@ -30,11 +53,17 @@ export default function App() {
     });
   }
 
+  function navigateTo(page: Page) {
+    setCurrentPage(page);
+    localStorage.setItem('cs_page', page);
+  }
+
   function handleLoginSuccess(id: number, name: string) {
+    localStorage.setItem('cs_user_id', String(id));
+    localStorage.setItem('cs_username', name);
     setUserId(id);
     setUsername(name);
-    setCurrentPage('dashboard');
-    localStorage.setItem('cs_page', 'dashboard');
+    navigateTo('dashboard');
   }
 
   function handleLogout() {
@@ -42,96 +71,71 @@ export default function App() {
     localStorage.removeItem('cs_username');
     setUserId(null);
     setUsername('');
-    setCurrentPage('landing');
-    localStorage.setItem('cs_page', 'landing');
+    navigateTo('landing');
   }
 
-  function navigateTo(page: Page) {
-    setCurrentPage(page);
-    localStorage.setItem('cs_page', page);
-  }
+  // Anything behind the login wall falls back to the landing page rather than
+  // rendering nothing.
+  const page: Page = SIGNED_IN_PAGES.includes(currentPage) && userId === null ? 'landing' : currentPage;
 
-  function goToLanding() {
-    setCurrentPage('landing');
-    localStorage.setItem('cs_page', 'landing');
-  }
+  const shared = {
+    theme,
+    onThemeToggle: toggleTheme,
+    onNavigate: navigateTo as (p: AppPage) => void,
+  };
 
   return (
     <div data-theme={theme}>
       <AnimatePresence mode="wait">
-        {currentPage === 'landing' && (
-          <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <LandingPage onEnter={() => navigateTo('login')} theme={theme} onThemeToggle={toggleTheme} />
-          </motion.div>
-        )}
-        
-        {currentPage === 'login' && (
-          <motion.div key="login" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <LoginPage onLoginSuccess={handleLoginSuccess} />
-          </motion.div>
-        )}
-        
-        {userId && currentPage === 'dashboard' && (
-          <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <Dashboard 
-              userId={userId} 
-              username={username} 
+        <motion.div
+          key={page}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          {page === 'landing' && (
+            <LandingPage onEnter={() => navigateTo(userId ? 'dashboard' : 'login')} theme={theme} onThemeToggle={toggleTheme} />
+          )}
+
+          {page === 'login' && (
+            <LoginPage
+              onLoginSuccess={handleLoginSuccess}
+              onBack={() => navigateTo('landing')}
+              theme={theme}
+              onThemeToggle={toggleTheme}
+            />
+          )}
+
+          {userId !== null && page === 'dashboard' && (
+            <Dashboard
+              userId={userId}
+              username={username}
               onLogout={handleLogout}
-              onNavigate={navigateTo}
-              onGoToLanding={goToLanding}
-              theme={theme}
-              onThemeToggle={toggleTheme}
+              onGoToLanding={() => navigateTo('landing')}
+              {...shared}
             />
-          </motion.div>
-        )}
-        
-        {userId && currentPage === 'courses' && (
-          <motion.div key="courses" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <Courses 
-              userId={userId} 
-              username={username}
-              onNavigate={navigateTo}
-              theme={theme}
-              onThemeToggle={toggleTheme}
-            />
-          </motion.div>
-        )}
-        
-        {userId && currentPage === 'assignments' && (
-          <motion.div key="assignments" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <Assignments 
-              userId={userId} 
-              username={username}
-              onNavigate={navigateTo}
-              theme={theme}
-              onThemeToggle={toggleTheme}
-            />
-          </motion.div>
-        )}
-        
-        {userId && currentPage === 'calendar' && (
-          <motion.div key="calendar" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <Calendar 
-              userId={userId} 
-              username={username}
-              onNavigate={navigateTo}
-              theme={theme}
-              onThemeToggle={toggleTheme}
-            />
-          </motion.div>
-        )}
-        
-        {userId && currentPage === 'friends' && (
-          <motion.div key="friends" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <Friends 
-              userId={userId} 
-              username={username}
-              onNavigate={navigateTo}
-              theme={theme}
-              onThemeToggle={toggleTheme}
-            />
-          </motion.div>
-        )}
+          )}
+
+          {userId !== null && page === 'courses' && (
+            <Courses userId={userId} username={username} {...shared} />
+          )}
+
+          {userId !== null && page === 'assignments' && (
+            <Assignments userId={userId} username={username} {...shared} />
+          )}
+
+          {userId !== null && page === 'calendar' && (
+            <Calendar userId={userId} username={username} {...shared} />
+          )}
+
+          {userId !== null && page === 'friends' && (
+            <Friends userId={userId} username={username} {...shared} />
+          )}
+
+          {userId !== null && page === 'settings' && (
+            <Settings userId={userId} username={username} onLogout={handleLogout} {...shared} />
+          )}
+        </motion.div>
       </AnimatePresence>
     </div>
   );

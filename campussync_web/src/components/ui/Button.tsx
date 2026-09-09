@@ -10,6 +10,10 @@ interface ButtonProps {
   disabled?: boolean;
   icon?: ReactNode;
   iconPosition?: 'left' | 'right';
+  /** Accessible name, for icon-only buttons where the label is visual. */
+  ariaLabel?: string;
+  title?: string;
+  type?: 'button' | 'submit';
 }
 
 export default function Button({
@@ -20,7 +24,10 @@ export default function Button({
   onClick,
   disabled = false,
   icon,
-  iconPosition = 'right'
+  iconPosition = 'right',
+  ariaLabel,
+  title,
+  type = 'button'
 }: ButtonProps) {
   const baseStyles = 'font-medium rounded-xl transition-all duration-250 flex items-center justify-center gap-2';
   
@@ -44,6 +51,9 @@ export default function Button({
       className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       onClick={onClick}
       disabled={disabled}
+      aria-label={ariaLabel}
+      title={title}
+      type={type}
     >
       {icon && iconPosition === 'left' && icon}
       {children}

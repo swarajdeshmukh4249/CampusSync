@@ -60,19 +60,40 @@ class Database:
             "username":        data["username"],
             "cookies":         data["cookies"],       # pass dict directly — jsonb column
             "fcm_token":       data["fcm_token"],
-            "whatsapp_number": data["whatsapp_number"],
             "sync_data":       data["sync_data"],      # dict, not json.dumps()
             "last_sync":       data["last_sync"],
         }
 
+        # Encrypted VOLP password — needed to re-login when a scheduled
+        # submission fires after the session cookie has expired. Only written
+        # when encryption is actually configured (see crypto.py).
+        if data.get("password_enc"):
+            payload["password_enc"] = data["password_enc"]
+
         if existing.data:
             user_id = existing.data[0]["id"]
+            # Notification preferences are owned by the settings screen; a
+            # re-login must not silently reset choices the student already made.
+            if data.get("whatsapp_number"):
+                payload["whatsapp_number"] = data["whatsapp_number"]
             self.client.table("users").update(payload).eq("id", user_id).execute()
         else:
+            # First sign-in: seed the defaults the settings screen will edit.
+            payload.update({
+                "whatsapp_number":  data.get("whatsapp_number", ""),
+                "whatsapp_enabled": data.get("whatsapp_enabled", True),
+                "push_enabled":     data.get("push_enabled", True),
+                "reminder_minutes": data.get("reminder_minutes", 20),
+            })
             result = self.client.table("users").insert(payload).execute()
             user_id = result.data[0]["id"]
 
         return user_id
+
+    async def clear_stored_credentials(self, user_id: int):
+        """Forget the saved VOLP password. Scheduled submissions that fire after
+        the session cookie expires will fail until the student signs in again."""
+        self.client.table("users").update({"password_enc": None}).eq("id", user_id).execute()
 
     async def get_user(self, user_id: int) -> Optional[dict]:
         result = self.client.table("users").select("*").eq("id", user_id).execute()
@@ -92,6 +113,10 @@ class Database:
             "last_sync":      data["last_sync"],
             "sent_reminders": data["sent_reminders"],
         }).eq("id", user_id).execute()
+
+    async def update_user_cookies(self, user_id: int, cookies: dict):
+        """Persist a freshly-minted VOLP session so the next call skips the login."""
+        self.client.table("users").update({"cookies": cookies}).eq("id", user_id).execute()
 
     async def update_user_settings(self, user_id: int, settings: dict):
         payload = {
@@ -203,6 +228,24 @@ class Database:
             r for r in self._read_submissions()
             if r.get("status") == "scheduled" and r.get("scheduled_for", "") <= now_iso
         ]
+
+    async def delete_scheduled_submission(self, submission_id: int, user_id: int) -> bool:
+        """Cancel a pending submission and remove the file we were holding."""
+        rows = self._read_submissions()
+        target = next(
+            (r for r in rows if r.get("id") == submission_id and r.get("user_id") == user_id),
+            None,
+        )
+        if not target:
+            return False
+        stored = target.get("stored_path")
+        if stored and os.path.exists(stored):
+            try:
+                os.remove(stored)
+            except OSError as e:
+                print(f"[DB] Could not delete {stored}: {e}")
+        self._write_submissions([r for r in rows if r is not target])
+        return True
 
     async def update_submission(self, submission_id: int, updates: dict) -> Optional[dict]:
         rows = self._read_submissions()
