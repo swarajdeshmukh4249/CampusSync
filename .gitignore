@@ -24,3 +24,6 @@ dist/
 
 # Scratch browser-test scripts used during development.
 *.mjs
+
+# Captured VOLP responses — contains your coursework.
+campussync/volp_dump/

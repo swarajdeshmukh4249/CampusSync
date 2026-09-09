@@ -230,6 +230,20 @@ class DeadlineDetector:
             return None
 
         raw = date_str.strip().replace("Z", "")
+
+        # VOLP renders deadlines as "05-09-2026 00:00 AM" and, on the
+        # subjective screen, "15/09/2026 23:59 PM" — a 24-hour clock with a
+        # meridiem glued on. Drop a meridiem that contradicts the hour so the
+        # 24-hour formats below can read it.
+        meridiem = raw[-2:].upper()
+        if meridiem in ("AM", "PM"):
+            head = raw[:-2].strip()
+            hour_token = head.split(" ")[-1].split(":")[0] if ":" in head else ""
+            # Hour 0 or >12 cannot belong to a 12-hour clock: VOLP writes
+            # midnight as "00:00 AM" rather than "12:00 AM".
+            if hour_token.isdigit() and (int(hour_token) > 12 or int(hour_token) == 0):
+                raw = head
+
         formats = [
             "%Y-%m-%d %H:%M:%S",
             "%Y-%m-%d %H:%M",
@@ -245,10 +259,14 @@ class DeadlineDetector:
             "%d %b %Y",
             "%d-%m-%Y %H:%M:%S",
             "%d-%m-%Y %H:%M",
+            "%d-%m-%Y %I:%M %p",
+            "%d-%m-%Y %I:%M:%S %p",
             "%d-%m-%Y",
             "%Y-%m-%d",
             "%d/%m/%Y %H:%M:%S",
             "%d/%m/%Y %H:%M",
+            "%d/%m/%Y %I:%M %p",
+            "%d/%m/%Y %I:%M:%S %p",
             "%d/%m/%Y",
         ]
         for fmt in formats:
