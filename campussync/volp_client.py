@@ -194,11 +194,29 @@ def _first_text(item: dict, *keys) -> str:
     return ""
 
 
+def _question_text(item: dict) -> str:
+    """Find the assignment brief/question despite VOLP's varying field names.
+
+    Without this, a student sees only a title like "Assignment 4" with no
+    way to tell what's actually being asked — the question text (or the
+    attached question-paper file, see _file_url) is the whole point.
+    """
+    return _first_text(
+        item,
+        "description", "question", "question_text", "questionText",
+        "problem_statement", "problemStatement", "assignment_description",
+        "assignmentDescription", "instructions", "content", "details",
+        "assignment_details", "assignmentDetails",
+    )
+
+
 def _file_url(item: dict) -> str:
     """Find a teacher attachment despite VOLP's varying field names."""
     for key in ("file_url", "fileUrl", "download_url", "downloadUrl", "attachment_url",
                 "attachmentUrl", "document_url", "documentUrl", "file_path", "filePath",
-                "filepath", "file", "attachment", "url", "link"):
+                "filepath", "file", "attachment", "url", "link",
+                "question_file", "questionFile", "assignment_file", "assignmentFile",
+                "question_paper", "questionPaper"):
         value = item.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
@@ -245,7 +263,8 @@ def _normalise_assignment(item: dict, crsid, colid, section: str) -> Optional[di
     return {
         "assignment_id": assignment_id,
         "assignment_name": _first_text(item, "assignment_name", "assignmentName", "title", "name", "content_name") or "Untitled assignment",
-        "description": _first_text(item, "description", "content", "instructions"),
+        "description": _question_text(item),
+        "file_url": _file_url(item),
         "due_date": _extract_due_date(item),
         "start_date": item.get("start_date") or item.get("startDate") or item.get("submission_start_date") or "",
         "is_submitted": _extract_submitted(item),
@@ -310,7 +329,7 @@ def _merge_assignment_records(existing: dict, new: dict) -> dict:
             if not val:
                 result.pop("is_placeholder", None)
         elif key in (
-            "submission_date", "assignment_name", "description", "max_marks",
+            "submission_date", "assignment_name", "description", "file_url", "max_marks",
             "assignment_type", "start_date", "section",
         ):
             if val and not result.get(key):
@@ -685,7 +704,8 @@ class VOLPClient:
                     results.append({
                         "assignment_id":   item.get("assid") or item.get("id") or item.get("assignment_id"),
                         "assignment_name": item.get("title") or item.get("name") or item.get("assignment_name") or "Untitled assignment",
-                        "description":     item.get("description", ""),
+                        "description":     _question_text(item),
+                        "file_url":        _file_url(item),
                         "due_date":        _extract_due_date(item),
                         "start_date":      item.get("start_date") or item.get("startDate") or "",
                         "is_submitted":    _extract_submitted(item),
@@ -768,7 +788,8 @@ class VOLPClient:
                         results.append({
                             "assignment_id":   item.get("assignmentId") or item.get("id"),
                             "assignment_name": item.get("title") or item.get("assignmentName") or "Objective Assignment",
-                            "description":     item.get("description", ""),
+                            "description":     _question_text(item),
+                            "file_url":        _file_url(item),
                             "due_date":        _extract_due_date(item),
                             "start_date":      item.get("startDate") or "",
                             "is_submitted":    _extract_submitted(item),
@@ -809,7 +830,8 @@ class VOLPClient:
                         results.append({
                             "assignment_id":   item.get("assignmentId") or item.get("id"),
                             "assignment_name": item.get("title") or item.get("assignmentName") or "Subjective Assignment",
-                            "description":     item.get("description") or item.get("question", ""),
+                            "description":     _question_text(item),
+                            "file_url":        _file_url(item),
                             "due_date":        _extract_due_date(item),
                             "start_date":      item.get("startDate") or "",
                             "is_submitted":    _extract_submitted(item),
@@ -850,7 +872,8 @@ class VOLPClient:
                         results.append({
                             "assignment_id":   item.get("handsOnId") or item.get("id") or item.get("assignmentId"),
                             "assignment_name": item.get("title") or item.get("handsOnName") or "Hands-On Assignment",
-                            "description":     item.get("description") or "",
+                            "description":     _question_text(item),
+                            "file_url":        _file_url(item),
                             "due_date":        _extract_due_date(item),
                             "start_date":      item.get("startDate") or "",
                             "is_submitted":    _extract_submitted(item),
@@ -886,7 +909,8 @@ class VOLPClient:
                                 results.append({
                                     "assignment_id":   item.get("handsOnId") or item.get("id") or item.get("assignmentId"),
                                     "assignment_name": item.get("title") or item.get("handsOnName") or "Hands-On Assignment",
-                                    "description":     item.get("description") or "",
+                                    "description":     _question_text(item),
+                                    "file_url":        _file_url(item),
                                     "due_date":        _extract_due_date(item),
                                     "start_date":      item.get("startDate") or "",
                                     "is_submitted":    _extract_submitted(item),
@@ -913,7 +937,8 @@ class VOLPClient:
                                     results.append({
                                         "assignment_id":   item.get("handsOnId") or item.get("id") or item.get("assignmentId"),
                                         "assignment_name": item.get("title") or item.get("handsOnName") or "Hands-On Assignment",
-                                        "description":     item.get("description") or "",
+                                        "description":     _question_text(item),
+                                        "file_url":        _file_url(item),
                                         "due_date":        _extract_due_date(item),
                                         "start_date":      item.get("startDate") or "",
                                         "is_submitted":    _extract_submitted(item),
@@ -953,7 +978,8 @@ class VOLPClient:
                     results.append({
                         "assignment_id":   item.get("testId") or item.get("id"),
                         "assignment_name": item.get("title") or item.get("testName") or "Test/Assessment",
-                        "description":     item.get("description", ""),
+                        "description":     _question_text(item),
+                        "file_url":        _file_url(item),
                         "due_date":        _extract_due_date(item) or item.get("scheduledDate") or "",
                         "start_date":      item.get("startDate") or item.get("scheduledDate") or "",
                         "is_submitted":    _extract_submitted(item),

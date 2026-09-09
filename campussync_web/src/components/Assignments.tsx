@@ -13,8 +13,10 @@ import {
   Bell,
   Upload,
   Filter,
-  SortAsc
+  SortAsc,
+  Paperclip
 } from 'lucide-react';
+import { API_BASE } from '../api';
 import Card from './ui/Card';
 import Button from './ui/Button';
 import ThemeToggle from './ui/ThemeToggle';
@@ -35,6 +37,7 @@ interface Assignment {
   assignment_id: string;
   assignment_name: string;
   description: string;
+  download_url?: string | null;
   due_date: string;
   start_date: string;
   is_submitted: boolean;
@@ -56,7 +59,7 @@ export default function Assignments({ userId, onNavigate, theme, onThemeToggle }
     const fetchAssignments = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`http://127.0.0.1:8081/assignments/${userId}`);
+        const response = await fetch(`${API_BASE}/assignments/${userId}`);
         if (response.ok) {
           const data = await response.json();
           setAssignments(data.assignments || []);
@@ -351,6 +354,31 @@ export default function Assignments({ userId, onNavigate, theme, onThemeToggle }
 
                           <h3 className="text-lg font-semibold mb-1">{assignment.assignment_name}</h3>
                           <p className="text-sm text-[var(--text-secondary)] mb-3">{assignment.course_name}</p>
+
+                          {assignment.description && (
+                            <p className="text-sm text-[var(--text-secondary)] mb-3 whitespace-pre-line line-clamp-3">
+                              {assignment.description}
+                            </p>
+                          )}
+
+                          {assignment.download_url && (
+                            <a
+                              href={`${API_BASE}${assignment.download_url}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-2 text-sm mb-3 hover:underline"
+                              style={{ color: '#7C6CFF' }}
+                            >
+                              <Paperclip size={14} />
+                              <span>Question paper</span>
+                            </a>
+                          )}
+
+                          {!assignment.description && !assignment.download_url && (
+                            <p className="text-sm text-[var(--text-secondary)] mb-3 italic">
+                              No question text synced from VOLP for this assignment yet
+                            </p>
+                          )}
 
                           <div className="flex items-center gap-4 text-sm">
                             <div className="flex items-center gap-2 text-[var(--text-secondary)]">

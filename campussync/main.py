@@ -121,7 +121,7 @@ def active_course_keys(sync_data: dict) -> set:
     return keys
 
 
-def assignment_payload(raw: dict, course_name: str) -> dict:
+def assignment_payload(raw: dict, course_name: str, user_id: int) -> dict:
     due_raw = raw.get("due_date", "")
     due = detector._parse_date(due_raw)
     due_str = due.isoformat() if due else (str(due_raw) if due_raw else "")
@@ -129,10 +129,16 @@ def assignment_payload(raw: dict, course_name: str) -> dict:
     urgent = False
     if due and not submitted:
         urgent = due - datetime.now() <= timedelta(hours=48) and due >= datetime.now()
+    assignment_id = str(raw.get("assignment_id") or "")
+    download_url = (
+        f"/assignments/{user_id}/download?assignment_id={quote(assignment_id, safe='')}"
+        if raw.get("file_url") else None
+    )
     return {
-        "assignment_id":   str(raw.get("assignment_id") or ""),
+        "assignment_id":   assignment_id,
         "assignment_name": raw.get("assignment_name") or "Untitled assignment",
         "description":     raw.get("description") or "",
+        "download_url":    download_url,
         "due_date":        due_str,
         "start_date":      raw.get("start_date") or "",
         "is_submitted":    submitted,
@@ -358,7 +364,7 @@ async def get_assignments(user_id: int):
     for key, raw in iter_assignments(sync_data):
         if allowed_keys and key and key not in allowed_keys:
             continue
-        payload = assignment_payload(raw, detector._get_course_name(key, sync_data) if key else raw.get("course_name", ""))
+        payload = assignment_payload(raw, detector._get_course_name(key, sync_data) if key else raw.get("course_name", ""), user_id)
         all_assignments.append(payload)
 
     def sort_key(a):
@@ -388,7 +394,7 @@ async def get_courses(user_id: int):
     for key, raw in iter_assignments(sync_data):
         if allowed_keys and key and key not in allowed_keys:
             continue
-        payload = assignment_payload(raw, detector._get_course_name(key, sync_data) if key else "")
+        payload = assignment_payload(raw, detector._get_course_name(key, sync_data) if key else "", user_id)
         parts = key.split("_") if key else []
         crsid = str(raw.get("crsid") or (parts[0] if parts else ""))
         assignments_by_course.setdefault(crsid, []).append(payload)
@@ -503,6 +509,39 @@ async def download_material(user_id: int, material_id: str):
                 break
     if not source or not source.get("file_url"):
         raise HTTPException(status_code=404, detail="This material has no downloadable file")
+
+    client = VOLPClient()
+    if not client.restore_session(as_obj(user.get("cookies"))):
+        await client.close()
+        raise HTTPException(status_code=401, detail="Your VOLP session expired. Please sign in again.")
+    try:
+        body, media_type, disposition = await client.download_material(source["file_url"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not download the file from VOLP: {e}")
+    finally:
+        await client.close()
+
+    headers = {"Content-Disposition": disposition} if disposition else {}
+    return Response(content=body, media_type=media_type, headers=headers)
+
+
+@app.get("/assignments/{user_id}/download")
+async def download_assignment_file(user_id: int, assignment_id: str):
+    """Serve an assignment's attached question paper/brief, same as materials."""
+    user = await db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    sync_data = as_obj(user.get("sync_data"))
+    source = None
+    for _, raw in iter_assignments(sync_data):
+        if str(raw.get("assignment_id")) == assignment_id:
+            source = raw
+            break
+    if not source or not source.get("file_url"):
+        raise HTTPException(status_code=404, detail="This assignment has no attached file")
 
     client = VOLPClient()
     if not client.restore_session(as_obj(user.get("cookies"))):
