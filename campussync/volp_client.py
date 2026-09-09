@@ -127,11 +127,68 @@ def _extract_due_date(item: dict):
     for key in (
         "dueDate", "endDate", "end_date", "due_date", "deadline",
         "submission_end_date", "submissionEndDate", "lastDate", "last_date",
+        "assignmentEndDate", "assignment_end_date", "submitBy", "submit_by",
+        "expiryDate", "expiry_date", "validTill", "valid_till", "toDate", "to_date",
+        "closeDate", "close_date", "lastSubmissionDate", "last_submission_date",
     ):
         val = item.get(key)
         if val is not None and val != "":
             return val
     return ""
+
+
+def _extract_max_marks(item: dict):
+    """VOLP spells the mark total a dozen ways; an assignment worth 20 marks
+    should never render as "N/A" just because of the field name."""
+    for key in (
+        "max_marks", "maxMarks", "maximum_marks", "maximumMarks", "marks",
+        "total_marks", "totalMarks", "totalmarks", "assignment_marks",
+        "assignmentMarks", "outOf", "out_of", "weightage", "score",
+    ):
+        val = item.get(key)
+        if val is None or val == "":
+            continue
+        try:
+            n = float(val)
+        except (TypeError, ValueError):
+            continue
+        if n > 0:
+            return int(n) if n == int(n) else n
+    return 0
+
+
+# VOLP's learner classroom routes, keyed by the assignment type we detected.
+# Used to deep-link a card we could not fully sync, so "no details" still puts
+# the student one click from the real thing instead of at a dead end.
+_VOLP_CLASSROOM_BASE = "https://classroom.volp.in"
+_VOLP_ASSIGNMENT_ROUTES = {
+    "hands": "handsOnAssignment",
+    "hands_on": "handsOnAssignment",
+    "mcq": "objectiveAssignment",
+    "objective": "objectiveAssignment",
+    "swa": "subjectiveAssignment",
+    "subjective": "subjectiveAssignment",
+    "mwa": "subjectiveAssignment",
+    "proj": "projectAssignment",
+    "project": "projectAssignment",
+    "test": "testList",
+    "cie": "testList",
+}
+
+
+def assignment_volp_url(crsid, colid, assignment_id, assignment_type=None) -> str:
+    """Best-effort deep link to an assignment inside VOLP's learner classroom.
+
+    Returns the course dashboard when we cannot pin the exact assignment, and
+    an empty string when we do not even know the course.
+    """
+    if crsid in (None, "") or colid in (None, ""):
+        return ""
+    course_url = f"{_VOLP_CLASSROOM_BASE}/learnerCourseContent/{crsid}/{colid}"
+    route = _VOLP_ASSIGNMENT_ROUTES.get(str(assignment_type or "").strip().lower())
+    if route and assignment_id not in (None, ""):
+        return f"{_VOLP_CLASSROOM_BASE}/{route}/{crsid}/{colid}/{assignment_id}"
+    return course_url
 
 
 def _extract_submitted(item: dict) -> bool:
@@ -269,7 +326,7 @@ def _normalise_assignment(item: dict, crsid, colid, section: str) -> Optional[di
         "start_date": item.get("start_date") or item.get("startDate") or item.get("submission_start_date") or "",
         "is_submitted": _extract_submitted(item),
         "submission_date": item.get("submission_date"),
-        "max_marks": item.get("max_marks") or item.get("marks") or item.get("maximum_marks") or 0,
+        "max_marks": _extract_max_marks(item),
         "section": section or "Course Content",
         "crsid": crsid,
         "colid": colid,
@@ -439,8 +496,14 @@ def _create_placeholder_assignments(assignment_ids: dict, crsid: int, colid: int
             placeholders.append({
                 "assignment_id": str(assign_id),
                 "assignment_name": f"{type_name} #{assign_id}",
-                "description": f"View details on VOLP classroom",
-                "due_date": None,  # Changed from empty string to None for better handling
+                # Say plainly that the sync came up short, rather than implying
+                # the assignment itself has no deadline or marks.
+                "description": (
+                    "CampusSync found this assignment on VOLP but could not read its "
+                    "details this sync, so the deadline and marks below are unknown. "
+                    "Open it on VOLP to see the question."
+                ),
+                "due_date": None,
                 "start_date": None,
                 "is_submitted": False,
                 "submission_date": None,
@@ -449,7 +512,8 @@ def _create_placeholder_assignments(assignment_ids: dict, crsid: int, colid: int
                 "crsid": crsid,
                 "colid": colid,
                 "course_name": course_name,
-                "is_placeholder": True  # Flag to indicate this is a placeholder
+                "volp_url": assignment_volp_url(crsid, colid, assign_id, assign_type),
+                "is_placeholder": True,
             })
 
     print(f"[PLACEHOLDER] Created {len(placeholders)} placeholder assignments")
@@ -710,7 +774,7 @@ class VOLPClient:
                         "start_date":      item.get("start_date") or item.get("startDate") or "",
                         "is_submitted":    _extract_submitted(item),
                         "submission_date": item.get("submission_date"),
-                        "max_marks":       item.get("max_marks") or item.get("marks") or 0,
+                        "max_marks":       _extract_max_marks(item),
                         "crsid":           crsid,
                         "colid":           colid,
                     })
@@ -794,7 +858,7 @@ class VOLPClient:
                             "start_date":      item.get("startDate") or "",
                             "is_submitted":    _extract_submitted(item),
                             "submission_date": item.get("submissionDate"),
-                            "max_marks":       item.get("maxMarks") or item.get("totalMarks") or 0,
+                            "max_marks":       _extract_max_marks(item),
                             "assignment_type": "objective",
                             "crsid":           crsid,
                             "colid":           colid,
@@ -836,7 +900,7 @@ class VOLPClient:
                             "start_date":      item.get("startDate") or "",
                             "is_submitted":    _extract_submitted(item),
                             "submission_date": item.get("submissionDate"),
-                            "max_marks":       item.get("maxMarks") or item.get("totalMarks") or 0,
+                            "max_marks":       _extract_max_marks(item),
                             "assignment_type": "subjective",
                             "crsid":           crsid,
                             "colid":           colid,
@@ -878,7 +942,7 @@ class VOLPClient:
                             "start_date":      item.get("startDate") or "",
                             "is_submitted":    _extract_submitted(item),
                             "submission_date": item.get("submissionDate"),
-                            "max_marks":       item.get("maxMarks") or item.get("totalMarks") or 0,
+                            "max_marks":       _extract_max_marks(item),
                             "assignment_type": "hands_on",
                             "crsid":           crsid,
                             "colid":           colid,
@@ -915,7 +979,7 @@ class VOLPClient:
                                     "start_date":      item.get("startDate") or "",
                                     "is_submitted":    _extract_submitted(item),
                                     "submission_date": item.get("submissionDate"),
-                                    "max_marks":       item.get("maxMarks") or item.get("totalMarks") or 0,
+                                    "max_marks":       _extract_max_marks(item),
                                     "assignment_type": "hands_on",
                                     "crsid":           crsid,
                                     "colid":           colid,
@@ -943,7 +1007,7 @@ class VOLPClient:
                                         "start_date":      item.get("startDate") or "",
                                         "is_submitted":    _extract_submitted(item),
                                         "submission_date": item.get("submissionDate"),
-                                        "max_marks":       item.get("maxMarks") or item.get("totalMarks") or 0,
+                                        "max_marks":       _extract_max_marks(item),
                                         "assignment_type": "hands_on",
                                         "crsid":           crsid,
                                         "colid":           colid,
@@ -984,7 +1048,7 @@ class VOLPClient:
                         "start_date":      item.get("startDate") or item.get("scheduledDate") or "",
                         "is_submitted":    _extract_submitted(item),
                         "submission_date": item.get("completionDate"),
-                        "max_marks":       item.get("maxMarks") or item.get("totalMarks") or 0,
+                        "max_marks":       _extract_max_marks(item),
                         "assignment_type": "test",
                         "crsid":           crsid,
                         "colid":           colid,

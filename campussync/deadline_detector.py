@@ -232,14 +232,23 @@ class DeadlineDetector:
         raw = date_str.strip().replace("Z", "")
         formats = [
             "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
             "%Y-%m-%dT%H:%M:%S",
             "%Y-%m-%dT%H:%M:%S.%f",
+            "%Y-%m-%dT%H:%M",
             "%d-%b-%Y %H:%M:%S",
+            "%d-%b-%Y %H:%M",
+            "%d-%b-%Y %I:%M %p",
             "%d-%b-%Y",
+            "%d %b %Y %H:%M:%S",
+            "%d %b %Y %H:%M",
+            "%d %b %Y",
             "%d-%m-%Y %H:%M:%S",
+            "%d-%m-%Y %H:%M",
             "%d-%m-%Y",
             "%Y-%m-%d",
             "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y %H:%M",
             "%d/%m/%Y",
         ]
         for fmt in formats:
@@ -280,12 +289,30 @@ class DeadlineDetector:
 
 
     def _get_course_name(self, key: str, data: dict) -> str:
-        """Find course name from crsid_colid key."""
-        parts = key.split("_")
+        """Find course name from a "crsid_colid" key.
+
+        Matches on both ids — several courses can share a colid — and compares
+        them as strings so a non-numeric id from VOLP never raises.
+        """
+        parts = str(key or "").split("_")
         if len(parts) < 2:
             return "Unknown Course"
-        colid = int(parts[1])
-        for course in data.get("courses", []):
-            if course.get("colid") == colid:
-                return course.get("display_name") or course.get("course_name", "Unknown")
+        crsid, colid = parts[0], parts[1]
+        courses = data.get("courses") or []
+        if not isinstance(courses, list):
+            return "Unknown Course"
+
+        def title(course: dict) -> str:
+            return course.get("display_name") or course.get("course_name") or "Unknown Course"
+
+        for course in courses:
+            if not isinstance(course, dict):
+                continue
+            if str(course.get("crsid")) == crsid and str(course.get("colid")) == colid:
+                return title(course)
+        # Fall back to crsid alone: content-derived keys sometimes carry a
+        # different colid than the course list does.
+        for course in courses:
+            if isinstance(course, dict) and str(course.get("crsid")) == crsid:
+                return title(course)
         return "Unknown Course"
