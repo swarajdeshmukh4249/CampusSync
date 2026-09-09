@@ -1,13 +1,17 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Orbit, Lock, User, Eye, EyeOff, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { Orbit, Lock, User, Eye, EyeOff, Loader2, AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react';
 import { api } from '../api';
+import ThemeToggle from './ui/ThemeToggle';
 
 interface Props {
     onLoginSuccess: (userId: number, username: string) => void;
+    onBack: () => void;
+    theme: 'dark' | 'light';
+    onThemeToggle: () => void;
 }
 
-export default function LoginPage({ onLoginSuccess }: Props) {
+export default function LoginPage({ onLoginSuccess, onBack, theme, onThemeToggle }: Props) {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -28,32 +32,35 @@ export default function LoginPage({ onLoginSuccess }: Props) {
         setStep('connecting');
 
         try {
-            // Simulate pipeline steps for UX
-            await delay(900);
+            // The login call is what actually connects and syncs, so move to
+            // "syncing" as soon as it is in flight rather than on a timer.
             setStep('syncing');
-
             const data = await api.login(username, password);
 
             setStep('done');
-            await delay(900);
-
-            localStorage.setItem('cs_user_id', String(data.user_id));
-            localStorage.setItem('cs_username', data.username);
+            await new Promise(r => setTimeout(r, 600));
 
             onLoginSuccess(data.user_id, data.username);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Could not sign in');
             setLoading(false);
             setStep('idle');
         }
     }
 
-    function delay(ms: number) {
-        return new Promise(r => setTimeout(r, ms));
-    }
-
     return (
-        <div className="min-h-screen bg-[#05070B] flex items-center justify-center p-4 relative overflow-hidden">
+        <div data-theme={theme} className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)] flex items-center justify-center p-4 relative overflow-hidden">
+            <div className="absolute top-6 left-6 z-10">
+                <button
+                    onClick={onBack}
+                    className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                    <ArrowLeft size={16} /> Back
+                </button>
+            </div>
+            <div className="absolute top-6 right-6 z-10">
+                <ThemeToggle theme={theme} onToggle={onThemeToggle} />
+            </div>
             {/* Ambient glow */}
             <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-[#6C63FF]/10 rounded-full blur-[150px] pointer-events-none" />
             <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-[#00D9FF]/5 rounded-full blur-[120px] pointer-events-none" />
@@ -73,12 +80,12 @@ export default function LoginPage({ onLoginSuccess }: Props) {
                     >
                         <Orbit className="text-white w-7 h-7" />
                     </motion.div>
-                    <h1 className="text-2xl font-semibold text-white tracking-tight">Welcome to CampusSync</h1>
-                    <p className="text-sm text-white/40 mt-2">Sign in with your VOLP credentials</p>
+                    <h1 className="text-2xl font-semibold tracking-tight">Welcome to CampusSync</h1>
+                    <p className="text-sm text-[var(--text-secondary)] mt-2">Sign in with your VOLP credentials</p>
                 </div>
 
                 {/* Card */}
-                <div className="bg-[#090D14] border border-white/10 rounded-3xl p-8 shadow-2xl">
+                <div className="bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-3xl p-8 shadow-2xl">
 
                     <AnimatePresence mode="wait">
                         {loading ? (
@@ -122,7 +129,7 @@ export default function LoginPage({ onLoginSuccess }: Props) {
                                                 ) : (
                                                     <div className="w-4 h-4 rounded-full border border-white/20 shrink-0" />
                                                 )}
-                                                <span className={`text-sm ${isDone ? 'text-white/80' : isActive ? 'text-white' : 'text-white/30'}`}>
+                                                <span className={`text-sm ${isDone || isActive ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
                                                     {s.label}
                                                 </span>
                                             </motion.div>
@@ -157,40 +164,45 @@ export default function LoginPage({ onLoginSuccess }: Props) {
 
                                 {/* Username */}
                                 <div className="relative">
-                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
                                     <input
                                         type="text"
                                         value={username}
                                         onChange={e => setUsername(e.target.value)}
-                                        placeholder="VOLP Username (e.g. swaraj.1251070064@vit.edu)"
+                                        placeholder="VOLP username or email"
+                                        autoComplete="username"
                                         required
-                                        className="w-full bg-white/5 border border-white/10 rounded-xl pl-11 pr-4 py-3.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#6C63FF]/60 focus:bg-[#6C63FF]/5 transition-all"
+                                        className="w-full bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl pl-11 pr-4 py-3.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:border-[#6C63FF]/60 focus:bg-[#6C63FF]/5 transition-all"
                                     />
                                 </div>
 
                                 {/* Password */}
                                 <div className="relative">
-                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
                                     <input
                                         type={showPassword ? 'text' : 'password'}
                                         value={password}
                                         onChange={e => setPassword(e.target.value)}
-                                        placeholder="VOLP Password"
+                                        placeholder="VOLP password"
+                                        autoComplete="current-password"
                                         required
-                                        className="w-full bg-white/5 border border-white/10 rounded-xl pl-11 pr-12 py-3.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#6C63FF]/60 focus:bg-[#6C63FF]/5 transition-all"
+                                        className="w-full bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl pl-11 pr-12 py-3.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:border-[#6C63FF]/60 focus:bg-[#6C63FF]/5 transition-all"
                                     />
                                     <button
                                         type="button"
                                         onClick={() => setShowPassword(v => !v)}
-                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/70 transition-colors"
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-white/70 transition-colors"
                                     >
                                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                     </button>
                                 </div>
 
                                 {/* Privacy notice */}
-                                <p className="text-[11px] text-white/30 leading-relaxed">
-                                    🔒 Your password is <strong className="text-white/50">never stored</strong>. CampusSync uses it once to log into VOLP, then discards it. Only a secure session token is saved.
+                                <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                                    🔒 CampusSync stores your VOLP login <strong className="text-[var(--text-primary)]">encrypted</strong>, so it can
+                                    sign in and hand in your assignments at the times you schedule — your
+                                    session alone expires too quickly for that. You can delete it any
+                                    time from Settings.
                                 </p>
 
                                 {/* Submit */}
@@ -205,7 +217,7 @@ export default function LoginPage({ onLoginSuccess }: Props) {
                     </AnimatePresence>
                 </div>
 
-                <p className="text-center text-xs text-white/25 mt-6">
+                <p className="text-center text-xs text-[var(--text-secondary)] mt-6">
                     CampusSync is not affiliated with VIT or VOLP. Use at your own discretion.
                 </p>
             </motion.div>

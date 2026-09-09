@@ -1,5 +1,30 @@
 commands to run the project:
 
+# 0. One-time setup
+#
+# Supabase schema — run campussync/schema.sql in the Supabase SQL Editor.
+# It creates the tables and, on an existing database, adds the columns
+# introduced later (password_enc, notification preferences, sent_reminders).
+#
+# .env in the repo root:
+#   SUPABASE_URL           = https://xxxxxxxx.supabase.co
+#   SUPABASE_KEY           = <service_role key — server-side only>
+#   CAMPUSSYNC_SECRET_KEY  = <Fernet key, see below>
+#
+# Generate the encryption key once:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+#
+# This key encrypts each student's VOLP password, which the backend needs in
+# recoverable form to sign in and submit on their behalf at a scheduled time.
+# Without it the app still runs, but scheduled submissions fail as soon as the
+# VOLP session cookies expire. Keep the key out of the database and out of git;
+# rotating it simply forces everyone to sign in again.
+#
+# Optional:
+#   CAMPUSSYNC_MAX_UPLOAD_MB  = 25   (cap on a scheduled submission's file)
+#   TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_WHATSAPP_NUMBER
+#   FIREBASE_CREDENTIALS_PATH = path/to/firebase-key.json
+
 # Backend (Python/FastAPI)
 cd campussync
 source venv311/bin/activate  # Use Python 3.11 venv

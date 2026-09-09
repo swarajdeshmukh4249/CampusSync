@@ -6,3 +6,4 @@ uvicorn[standard]
 pydantic
 apscheduler
 python-dotenv
+cryptography
