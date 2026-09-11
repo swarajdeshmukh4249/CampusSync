@@ -10,6 +10,8 @@ import Button from './ui/Button';
 import DataState from './ui/DataState';
 import AppShell from './ui/AppShell';
 import type { Page } from './ui/AppShell';
+import { Label, fieldClass } from './ui/Modal';
+import { Badge, Empty, SectionTitle } from './ui/Bits';
 import { useApiData } from '../hooks/useApiData';
 import { useNotifications } from '../hooks/useNotifications';
 import { formatBytes, formatDateTime, timeRemaining } from '../lib/format';
@@ -31,10 +33,10 @@ const REMINDER_CHOICES = [
 ];
 
 const STATUS_STYLE: Record<string, { color: string; label: string }> = {
-  scheduled: { color: '#7C6CFF', label: 'Scheduled' },
-  submitted: { color: '#32D583', label: 'Submitted' },
-  failed: { color: '#FF5C7A', label: 'Failed' },
-  queued_local: { color: '#FFB84D', label: 'Held — submit manually' },
+  scheduled: { color: 'var(--state-accent)', label: 'Scheduled' },
+  submitted: { color: 'var(--state-success)', label: 'Submitted' },
+  failed: { color: 'var(--state-danger)', label: 'Failed' },
+  queued_local: { color: 'var(--state-warning)', label: 'Held — submit manually' },
 };
 
 export default function Settings({
@@ -129,36 +131,51 @@ export default function Settings({
       theme={theme}
       onThemeToggle={onThemeToggle}
       title="Settings"
-      icon={<SettingsIcon size={20} />}
+      icon={<SettingsIcon size={18} />}
       notifications={notifications}
       onBack={{ label: 'Dashboard', onClick: () => onNavigate('dashboard') }}
+      eyebrow="Account"
+      heading="Settings"
+      subheading={
+        settings.data?.username
+          ? `Signed in as ${settings.data.username}`
+          : 'Reminders, scheduled submissions and your saved VOLP login.'
+      }
     >
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-        <h1 className="text-3xl font-semibold mb-2">Settings</h1>
-        <p className="text-[var(--text-secondary)]">
-          {settings.data?.username ? `Signed in as ${settings.data.username}` : 'Your CampusSync account'}
-        </p>
-      </motion.div>
-
       {error && (
-        <div className="flex items-start gap-2.5 p-4 rounded-xl text-sm bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/25 text-[var(--color-danger)] mb-6">
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-start gap-2.5 p-4 rounded-xl text-sm bg-[rgba(255,92,122,0.1)] border border-[rgba(255,92,122,0.25)] text-[var(--color-danger)] mb-5"
+        >
           <AlertCircle size={16} className="shrink-0 mt-0.5" />
           <span>{error}</span>
-        </div>
+        </motion.div>
       )}
       {notice && (
-        <div className="flex items-start gap-2.5 p-4 rounded-xl text-sm bg-[var(--color-success)]/10 border border-[var(--color-success)]/25 text-[var(--color-success)] mb-6">
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-start gap-2.5 p-4 rounded-xl text-sm bg-[rgba(61,220,151,0.1)] border border-[rgba(61,220,151,0.25)] text-[var(--color-success)] mb-5"
+        >
           <CheckCircle size={16} className="shrink-0 mt-0.5" />
           <span>{notice}</span>
-        </div>
+        </motion.div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Settings is the one screen where the 3D scene is turned almost all the
+          way down — it is a form, and forms want a quiet ground. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
         {/* Notifications */}
-        <Card variant="glass">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Bell size={18} /> Reminders
-          </h2>
+        <Card variant="glass" padding="lg">
+          <SectionTitle>
+            <span className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-lg grid place-items-center bg-[rgba(124,108,255,0.14)] text-[var(--color-accent)]">
+                <Bell size={16} />
+              </span>
+              Reminders
+            </span>
+          </SectionTitle>
 
           <DataState
             loading={settings.loading}
@@ -183,9 +200,7 @@ export default function Settings({
               />
 
               <div>
-                <label htmlFor="whatsapp-number" className="block text-sm font-medium mb-2">
-                  WhatsApp number
-                </label>
+                <Label htmlFor="whatsapp-number">WhatsApp number</Label>
                 <input
                   id="whatsapp-number"
                   type="tel"
@@ -193,29 +208,33 @@ export default function Settings({
                   value={current.whatsapp_number}
                   onChange={e => update({ whatsapp_number: e.target.value })}
                   placeholder="919876543210"
-                  className="w-full px-4 py-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                  className={fieldClass}
                 />
-                <p className="text-xs text-[var(--text-secondary)] mt-2 flex items-center gap-1.5">
+                <p className="text-xs text-[var(--text-tertiary)] mt-2.5 flex items-center gap-1.5">
                   <MessageCircle size={12} /> Country code first, no + or spaces.
                 </p>
               </div>
 
               <div>
-                <span className="block text-sm font-medium mb-2">Remind me before a deadline</span>
+                <Label>Remind me before a deadline</Label>
                 <div className="flex flex-wrap gap-2">
-                  {REMINDER_CHOICES.map(choice => (
-                    <button
-                      key={choice.minutes}
-                      onClick={() => update({ reminder_minutes: choice.minutes })}
-                      className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                        current.reminder_minutes === choice.minutes
-                          ? 'bg-[var(--color-accent)] text-white'
-                          : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
-                      }`}
-                    >
-                      {choice.label}
-                    </button>
-                  ))}
+                  {REMINDER_CHOICES.map(choice => {
+                    const active = current.reminder_minutes === choice.minutes;
+                    return (
+                      <button
+                        key={choice.minutes}
+                        onClick={() => update({ reminder_minutes: choice.minutes })}
+                        aria-pressed={active}
+                        className={`px-4 py-2 rounded-full text-[13px] font-medium border transition-[background,border-color,color] duration-200 ${
+                          active
+                            ? 'bg-[image:var(--gradient-action)] text-white border-transparent shadow-[0_4px_16px_rgba(124,108,255,0.35)]'
+                            : 'bg-[var(--bg-sunken)] text-[var(--text-secondary)] border-[var(--border-color)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+                        }`}
+                      >
+                        {choice.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -237,10 +256,15 @@ export default function Settings({
         </Card>
 
         {/* Scheduled submissions */}
-        <Card variant="glass">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <CalendarClock size={18} /> Scheduled submissions
-          </h2>
+        <Card variant="glass" padding="lg">
+          <SectionTitle>
+            <span className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-lg grid place-items-center bg-[rgba(52,224,255,0.14)] text-[var(--color-cyan)]">
+                <CalendarClock size={16} />
+              </span>
+              Scheduled submissions
+            </span>
+          </SectionTitle>
 
           <DataState
             loading={submissions.loading}
@@ -251,32 +275,33 @@ export default function Settings({
 
           {!submissions.loading && !submissions.error && (
             rows.length === 0 ? (
-              <p className="text-sm text-[var(--text-secondary)] py-6 text-center">
-                Nothing queued. Pick an assignment and hit Submit to have CampusSync hand it in
-                for you at a time you choose.
-              </p>
+              <Empty
+                icon={<CalendarClock size={20} />}
+                title="Nothing queued"
+                body="Pick an assignment and hit Submit to have CampusSync hand it in for you at a time you choose."
+              />
             ) : (
-              <ul className="space-y-3">
+              <ul className="space-y-2.5">
                 {rows.map(row => {
                   const style = STATUS_STYLE[row.status] ?? STATUS_STYLE.scheduled;
                   return (
                     <li
                       key={row.id}
-                      className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)]"
+                      className="relative p-4 pl-5 rounded-xl bg-[var(--bg-sunken)] border border-[var(--border-color)] overflow-hidden"
                     >
-                      <div className="flex items-start justify-between gap-3 mb-2">
+                      <span
+                        aria-hidden="true"
+                        className="absolute inset-y-0 left-0 w-1"
+                        style={{ backgroundColor: style.color }}
+                      />
+                      <div className="flex items-start justify-between gap-3 mb-2.5">
                         <div className="min-w-0">
-                          <p className="font-medium truncate">{row.assignment_name}</p>
-                          <p className="text-xs text-[var(--text-secondary)] truncate">
+                          <p className="font-medium truncate text-[14px]">{row.assignment_name}</p>
+                          <p className="text-xs text-[var(--text-tertiary)] truncate">
                             {row.course_name}
                           </p>
                         </div>
-                        <span
-                          className="text-xs px-2 py-1 rounded-full whitespace-nowrap"
-                          style={{ backgroundColor: `${style.color}20`, color: style.color }}
-                        >
-                          {style.label}
-                        </span>
+                        <Badge color={style.color}>{style.label}</Badge>
                       </div>
 
                       <p className="text-xs text-[var(--text-secondary)]">
@@ -301,12 +326,12 @@ export default function Settings({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="mt-2 !px-2"
+                          className="mt-2.5 !px-2.5"
                           icon={<X size={13} />}
                           iconPosition="left"
                           onClick={() => cancelSubmission(row.id)}
                         >
-                          Cancel
+                          Cancel this
                         </Button>
                       )}
                     </li>
@@ -318,24 +343,35 @@ export default function Settings({
         </Card>
 
         {/* VOLP login */}
-        <Card variant="glass">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <KeyRound size={18} /> Saved VOLP login
-          </h2>
+        <Card variant="glass" padding="lg">
+          <SectionTitle
+            action={
+              <Badge color={settings.data?.credentials_saved ? 'var(--state-success)' : 'var(--state-warning)'}>
+                {settings.data?.credentials_saved ? 'Stored' : 'Not stored'}
+              </Badge>
+            }
+          >
+            <span className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-lg grid place-items-center bg-[rgba(61,220,151,0.14)] text-[var(--color-success)]">
+                <KeyRound size={16} />
+              </span>
+              Saved VOLP login
+            </span>
+          </SectionTitle>
 
           {settings.data?.credentials_saved ? (
             <>
-              <p className="text-sm text-[var(--text-secondary)] mb-4">
+              <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-5">
                 CampusSync holds your VOLP password, encrypted, so it can sign in and submit on
                 your behalf at a scheduled time — even after your session expires. Delete it and
                 scheduled submissions stop working until you sign in again.
               </p>
-              <Button variant="outline" size="sm" onClick={forgetLogin} icon={<Trash2 size={14} />} iconPosition="left">
+              <Button variant="danger" size="sm" onClick={forgetLogin} icon={<Trash2 size={14} />} iconPosition="left">
                 Delete saved login
               </Button>
             </>
           ) : (
-            <p className="text-sm text-[var(--text-secondary)]">
+            <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
               No saved VOLP login. Scheduled submissions need one — sign in to CampusSync again to
               re-enable them.
             </p>
@@ -343,26 +379,36 @@ export default function Settings({
         </Card>
 
         {/* Danger zone */}
-        <Card variant="glass" className="border-[var(--color-danger)]/30">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-[var(--color-danger)]">
-            <ShieldAlert size={18} /> Delete account
-          </h2>
-          <p className="text-sm text-[var(--text-secondary)] mb-4">
+        <Card
+          variant="glass"
+          padding="lg"
+          edge="var(--color-danger)"
+          className="!border-[rgba(255,92,122,0.28)]"
+        >
+          <SectionTitle>
+            <span className="flex items-center gap-2.5 text-[var(--color-danger)]">
+              <span className="w-8 h-8 rounded-lg grid place-items-center bg-[rgba(255,92,122,0.12)]">
+                <ShieldAlert size={16} />
+              </span>
+              Delete account
+            </span>
+          </SectionTitle>
+          <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-5">
             Removes your VOLP session, saved login, synced coursework and group memberships from
             CampusSync. Your VOLP account itself is untouched. This cannot be undone.
           </p>
 
           {confirmDelete ? (
-            <div className="flex gap-3">
-              <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
+            <div className="flex flex-wrap gap-3">
+              <Button variant="secondary" size="sm" onClick={() => setConfirmDelete(false)}>
                 Keep my account
               </Button>
-              <Button variant="outline" size="sm" onClick={deleteAccount} icon={<Trash2 size={14} />} iconPosition="left">
+              <Button variant="danger" size="sm" onClick={deleteAccount} icon={<Trash2 size={14} />} iconPosition="left">
                 Yes, delete everything
               </Button>
             </div>
           ) : (
-            <Button variant="outline" size="sm" onClick={() => setConfirmDelete(true)}>
+            <Button variant="danger" size="sm" onClick={() => setConfirmDelete(true)}>
               Delete my account
             </Button>
           )}
@@ -379,7 +425,7 @@ function Toggle({
     <label className="flex items-start justify-between gap-4 cursor-pointer">
       <span className="min-w-0">
         <span className="block text-sm font-medium">{label}</span>
-        <span className="block text-xs text-[var(--text-secondary)]">{description}</span>
+        <span className="block text-xs text-[var(--text-tertiary)] mt-0.5">{description}</span>
       </span>
       <span className="relative shrink-0">
         <input
@@ -388,8 +434,8 @@ function Toggle({
           onChange={e => onChange(e.target.checked)}
           className="sr-only peer"
         />
-        <span className="block w-11 h-6 rounded-full bg-[var(--bg-surface)] border border-[var(--border-color)] peer-checked:bg-[var(--color-accent)] transition-colors" />
-        <span className="absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform peer-checked:translate-x-5" />
+        <span className="block w-11 h-6 rounded-full bg-[var(--bg-sunken)] border border-[var(--border-color)] transition-[background,border-color] duration-300 peer-checked:border-transparent peer-checked:bg-[linear-gradient(120deg,#7C6CFF,#34E0FF)] peer-checked:shadow-[0_0_16px_rgba(124,108,255,0.45)]" />
+        <span className="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-300 peer-checked:translate-x-5" />
       </span>
     </label>
   );

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  AlertCircle, BookOpen, Check, CheckCircle, Clock, Copy, LogIn, Plus, Users, X,
+  BookOpen, Check, CheckCircle, Clock, Copy, LogIn, Plus, Sparkles, UserPlus, Users,
 } from 'lucide-react';
 import { api } from '../api';
 import type { Friend, Group } from '../api';
@@ -10,9 +10,11 @@ import Button from './ui/Button';
 import DataState from './ui/DataState';
 import AppShell from './ui/AppShell';
 import type { Page } from './ui/AppShell';
+import Modal, { ErrorNote, Label, fieldClass } from './ui/Modal';
+import { Badge, Empty, SectionTitle } from './ui/Bits';
 import { useApiData } from '../hooks/useApiData';
 import { useNotifications } from '../hooks/useNotifications';
-import { courseColor, displayName, initials } from '../lib/format';
+import { courseColor, displayName, initials, tint } from '../lib/format';
 
 interface FriendsProps {
   userId: number;
@@ -57,55 +59,53 @@ export default function Friends({ userId, onNavigate, theme, onThemeToggle }: Fr
       theme={theme}
       onThemeToggle={onThemeToggle}
       title="Friends"
-      icon={<Users size={20} />}
+      icon={<Users size={18} />}
       notifications={notifications}
       search={{ value: query, onChange: setQuery, placeholder: 'Search classmates…' }}
       onBack={{ label: 'Dashboard', onClick: () => onNavigate('dashboard') }}
-      actions={
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setModal('join')} icon={<LogIn size={15} />} iconPosition="left">
-            Join
+      eyebrow="People"
+      heading="Your academic circle"
+      subheading="Classmates CampusSync found in your courses, plus the study groups you've joined."
+      headActions={
+        <>
+          <Button variant="secondary" size="sm" onClick={() => setModal('join')} icon={<LogIn size={15} />} iconPosition="left">
+            Join with code
           </Button>
           <Button variant="primary" size="sm" onClick={() => setModal('create')} icon={<Plus size={15} />} iconPosition="left">
             New group
           </Button>
-        </div>
+        </>
       }
     >
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-        <h1 className="text-3xl font-semibold mb-2">Your Academic Circle</h1>
-        <p className="text-[var(--text-secondary)]">
-          Classmates CampusSync found in your courses, plus the study groups you've joined
-        </p>
-      </motion.div>
-
-      {/* Study groups */}
+      {/* Study groups ------------------------------------------------- */}
       <section className="mb-10">
-        <h2 className="text-lg font-semibold mb-4">Study groups</h2>
+        <SectionTitle>Study groups</SectionTitle>
         <DataState
           loading={groups.loading}
           error={groups.error}
           onRetry={groups.reload}
           loadingMessage="Loading your groups…"
+          skeletonRows={2}
         />
         {!groups.loading && !groups.error && (
           groupList.length === 0 ? (
-            <Card variant="glass" className="py-8 text-center">
-              <p className="text-[var(--text-secondary)] mb-4">
-                You're not in any study group yet. Create one for a course, then share the invite
-                code with your classmates.
-              </p>
-              <div className="flex justify-center gap-3">
-                <Button variant="outline" size="sm" onClick={() => setModal('join')}>
-                  Join with a code
-                </Button>
-                <Button variant="primary" size="sm" onClick={() => setModal('create')}>
-                  Create a group
-                </Button>
-              </div>
-            </Card>
+            <Empty
+              icon={<Sparkles size={22} />}
+              title="No study group yet"
+              body="Create one for a course, then share the invite code with your classmates."
+              action={
+                <>
+                  <Button variant="secondary" size="sm" onClick={() => setModal('join')}>
+                    Join with a code
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={() => setModal('create')}>
+                    Create a group
+                  </Button>
+                </>
+              }
+            />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {groupList.map(group => (
                 <GroupCard key={group.id} group={group} />
               ))}
@@ -114,59 +114,69 @@ export default function Friends({ userId, onNavigate, theme, onThemeToggle }: Fr
         )}
       </section>
 
-      {/* Classmates */}
+      {/* Classmates ---------------------------------------------------- */}
       <section>
-        <h2 className="text-lg font-semibold mb-4">Classmates</h2>
+        <SectionTitle>
+          Classmates
+          {list.length > 0 && (
+            <span className="ml-2.5 text-[var(--text-tertiary)] font-normal numeric text-sm">
+              {list.length}
+            </span>
+          )}
+        </SectionTitle>
+
         <DataState
           loading={friends.loading}
           error={friends.error}
           onRetry={friends.reload}
           loadingMessage="Finding your classmates…"
+          skeletonRows={2}
         />
 
         {!friends.loading && !friends.error && (
           list.length === 0 ? (
-            <Card variant="glass" className="py-12 text-center">
-              <Users size={40} className="mx-auto mb-3 opacity-40" />
-              <p className="text-[var(--text-secondary)]">
-                {(friends.data?.friends ?? []).length === 0
-                  ? 'Nobody else from your courses has signed up for CampusSync yet. Share it with your classmates.'
-                  : `No classmate matches “${query}”.`}
-              </p>
-            </Card>
+            <Empty
+              icon={<UserPlus size={22} />}
+              title={(friends.data?.friends ?? []).length === 0 ? 'Nobody here yet' : 'No match'}
+              body={
+                (friends.data?.friends ?? []).length === 0
+                  ? 'None of your coursemates have signed up for CampusSync. Share it with them.'
+                  : `No classmate matches “${query}”.`
+              }
+            />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {list.map(friend => (
-                <Card key={friend.user_id} variant="glass">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div
-                      className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold shrink-0"
-                      style={{ background: 'linear-gradient(135deg, #7C6CFF, #00D9FF)' }}
-                    >
-                      {initials(friend.username)}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              {list.map((friend, i) => (
+                <motion.div
+                  key={friend.user_id}
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(i, 10) * 0.04, duration: 0.4 }}
+                >
+                  <Card variant="glass" padding="md" className="h-full">
+                    <div className="flex items-center gap-3.5 mb-4">
+                      <div
+                        className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold shrink-0 text-[13px]"
+                        style={{ background: 'var(--gradient-action)' }}
+                      >
+                        {initials(friend.username)}
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-semibold truncate text-[15px]">{displayName(friend.username)}</h3>
+                        <p className="text-[11.5px] text-[var(--text-tertiary)] truncate">{friend.username}</p>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold truncate">{displayName(friend.username)}</h3>
-                      <p className="text-xs text-[var(--text-secondary)] truncate">{friend.username}</p>
+
+                    <div className="flex items-center gap-2 text-[13px] text-[var(--text-secondary)] mb-3.5">
+                      <BookOpen size={14} />
+                      {friend.shared_courses} shared course{friend.shared_courses === 1 ? '' : 's'}
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)] mb-2">
-                    <BookOpen size={14} />
-                    {friend.shared_courses} shared course{friend.shared_courses === 1 ? '' : 's'}
-                  </div>
-
-                  <span
-                    className="inline-block text-xs px-2 py-1 rounded-full"
-                    style={
-                      friend.source === 'group'
-                        ? { backgroundColor: '#32D58320', color: '#32D583' }
-                        : { backgroundColor: '#7C6CFF20', color: '#7C6CFF' }
-                    }
-                  >
-                    {friend.source === 'group' ? friend.group_name ?? 'Study group' : 'Same course'}
-                  </span>
-                </Card>
+                    <Badge color={friend.source === 'group' ? 'var(--state-success)' : 'var(--state-accent)'}>
+                      {friend.source === 'group' ? friend.group_name ?? 'Study group' : 'Same course'}
+                    </Badge>
+                  </Card>
+                </motion.div>
               ))}
             </div>
           )
@@ -205,83 +215,53 @@ function GroupCard({ group }: { group: Group }) {
   }
 
   return (
-    <Card variant="glass">
-      <div className="flex items-start justify-between mb-3">
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ backgroundColor: `${color}20`, color }}
+    <Card variant="glass" padding="md" edge={color} className="h-full">
+      <span
+        aria-hidden="true"
+        className="absolute inset-0 opacity-[0.07] pointer-events-none"
+        style={{ background: `radial-gradient(circle at 15% 0%, ${color}, transparent 60%)` }}
+      />
+
+      <div className="relative flex items-start justify-between gap-3 mb-4">
+        <span
+          className="w-10 h-10 rounded-xl grid place-items-center shrink-0"
+          style={{ backgroundColor: tint(color, 12), color }}
         >
           <Users size={18} />
-        </div>
+        </span>
         <button
           onClick={copyCode}
-          className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-color)] hover:border-[var(--color-accent)] transition-colors font-mono"
+          className="flex items-center gap-1.5 text-[11.5px] px-2.5 py-1.5 rounded-lg bg-[var(--bg-sunken)] border border-[var(--border-color)] hover:border-[rgba(124,108,255,0.5)] transition-colors font-mono tracking-wider"
           title="Copy invite code"
         >
-          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {copied ? <Check size={12} className="text-[var(--color-success)]" /> : <Copy size={12} />}
           {group.invite_code}
         </button>
       </div>
 
-      <h3 className="font-semibold mb-1">{group.course_name}</h3>
-      <p className="text-sm text-[var(--text-secondary)] mb-3">
+      <h3 className="relative font-semibold mb-1 text-[15px]">{group.course_name}</h3>
+      <p className="relative text-[13px] text-[var(--text-secondary)] mb-4">
         {group.members.length} member{group.members.length === 1 ? '' : 's'}
       </p>
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className="relative flex items-center">
         {group.members.slice(0, 8).map(m => (
           <span
             key={m.id}
             title={m.username}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium text-white"
-            style={{ background: 'linear-gradient(135deg, #7C6CFF, #00D9FF)' }}
+            className="w-8 h-8 -mr-2 rounded-full flex items-center justify-center text-[10px] font-semibold text-white border-2 border-[var(--bg-primary)]"
+            style={{ background: 'var(--gradient-action)' }}
           >
             {initials(m.username)}
           </span>
         ))}
+        {group.members.length > 8 && (
+          <span className="ml-4 text-[11.5px] text-[var(--text-tertiary)]">
+            +{group.members.length - 8}
+          </span>
+        )}
       </div>
     </Card>
-  );
-}
-
-function Modal({
-  title, children, onClose,
-}: { title: string; children: React.ReactNode; onClose: () => void }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        onClick={e => e.stopPropagation()}
-        className="bg-[var(--bg-elevated)] rounded-2xl w-full max-w-md border border-[var(--border-color)] shadow-2xl p-6"
-      >
-        <div className="flex items-start justify-between mb-4">
-          <h3 className="text-xl font-semibold">{title}</h3>
-          <button onClick={onClose} aria-label="Close" className="p-1 rounded-lg hover:bg-[var(--bg-surface)]">
-            <X size={18} />
-          </button>
-        </div>
-        {children}
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function ErrorNote({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-start gap-2.5 p-3.5 rounded-xl text-sm bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/25 text-[var(--color-danger)] mb-4">
-      <AlertCircle size={16} className="shrink-0 mt-0.5" />
-      <span>{children}</span>
-    </div>
   );
 }
 
@@ -316,29 +296,32 @@ function CreateGroupModal({
   }
 
   return (
-    <Modal title="Create a study group" onClose={onClose}>
+    <Modal
+      title="Create a study group"
+      subtitle="Pick one of your VOLP courses — everyone who joins has to be enrolled in it."
+      icon={<Plus size={19} />}
+      onClose={onClose}
+    >
       {code ? (
-        <div className="text-center py-4">
-          <CheckCircle size={40} className="mx-auto mb-3 text-[var(--color-success)]" />
-          <p className="mb-2">Group created. Share this invite code:</p>
-          <p className="text-2xl font-mono font-bold tracking-widest mb-4">{code}</p>
+        <div className="text-center py-3">
+          <CheckCircle size={38} className="mx-auto mb-4 text-[var(--color-success)]" />
+          <p className="mb-4 text-[var(--text-secondary)] text-sm">Group created. Share this invite code:</p>
+          <p className="text-[28px] font-mono font-bold tracking-[0.28em] mb-6 gradient-text">{code}</p>
           <Button variant="primary" size="md" className="w-full" onClick={onClose}>
             Done
           </Button>
         </div>
       ) : (
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submit} className="space-y-5">
           {error && <ErrorNote>{error}</ErrorNote>}
           <div>
-            <label htmlFor="group-course" className="block text-sm font-medium mb-2">
-              Course
-            </label>
+            <Label htmlFor="group-course">Course</Label>
             <select
               id="group-course"
               value={selected}
               onChange={e => setSelected(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+              className={fieldClass}
             >
               <option value="">Pick one of your courses…</option>
               {courses.map(c => (
@@ -348,7 +331,7 @@ function CreateGroupModal({
               ))}
             </select>
             {courses.length === 0 && (
-              <p className="text-xs text-[var(--text-secondary)] mt-2">
+              <p className="text-xs text-[var(--text-tertiary)] mt-2.5">
                 No courses synced yet — sync from the Courses page first.
               </p>
             )}
@@ -358,7 +341,7 @@ function CreateGroupModal({
               Cancel
             </Button>
             <Button variant="primary" size="md" className="flex-1" type="submit" disabled={!selected || busy}>
-              {busy ? 'Creating…' : 'Create'}
+              {busy ? 'Creating…' : 'Create group'}
             </Button>
           </div>
         </form>
@@ -391,19 +374,22 @@ function JoinGroupModal({
   }
 
   return (
-    <Modal title="Join a study group" onClose={onClose}>
+    <Modal
+      title="Join a study group"
+      subtitle="Paste the invite code a classmate shared with you."
+      icon={<LogIn size={19} />}
+      onClose={onClose}
+    >
       {joined ? (
         <div className="text-center py-4">
-          <CheckCircle size={40} className="mx-auto mb-3 text-[var(--color-success)]" />
+          <CheckCircle size={38} className="mx-auto mb-4 text-[var(--color-success)]" />
           <p>You're in — {joined}</p>
         </div>
       ) : (
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submit} className="space-y-5">
           {error && <ErrorNote>{error}</ErrorNote>}
           <div>
-            <label htmlFor="invite-code" className="block text-sm font-medium mb-2">
-              Invite code
-            </label>
+            <Label htmlFor="invite-code">Invite code</Label>
             <input
               id="invite-code"
               value={code}
@@ -411,9 +397,9 @@ function JoinGroupModal({
               placeholder="ABC123"
               maxLength={12}
               required
-              className="w-full px-4 py-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-sm font-mono tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+              className={`${fieldClass} font-mono tracking-[0.28em] uppercase text-center text-base`}
             />
-            <p className="text-xs text-[var(--text-secondary)] mt-2 flex items-center gap-1.5">
+            <p className="text-xs text-[var(--text-tertiary)] mt-2.5 flex items-center gap-1.5">
               <Clock size={12} />
               You can only join a group for a course you're enrolled in on VOLP.
             </p>
@@ -423,7 +409,7 @@ function JoinGroupModal({
               Cancel
             </Button>
             <Button variant="primary" size="md" className="flex-1" type="submit" disabled={!code.trim() || busy}>
-              {busy ? 'Joining…' : 'Join'}
+              {busy ? 'Joining…' : 'Join group'}
             </Button>
           </div>
         </form>

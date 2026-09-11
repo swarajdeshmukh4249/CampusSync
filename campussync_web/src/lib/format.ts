@@ -69,10 +69,13 @@ export function assignmentStatus(a: {
   return 'pending';
 }
 
+/* Status and urgency resolve to CSS variables, not hex, so the same "overdue"
+   red can be one value on the dark void and a darker one on light porcelain
+   without every screen having to know which theme it is in. */
 export const STATUS_COLORS: Record<AssignmentStatus, string> = {
-  pending: '#FFB84D',
-  submitted: '#32D583',
-  overdue: '#FF5C7A',
+  pending: 'var(--state-warning)',
+  submitted: 'var(--state-success)',
+  overdue: 'var(--state-danger)',
 };
 
 /** Urgency derived from how close the deadline actually is, rather than from
@@ -89,14 +92,23 @@ export function urgency(a: { is_submitted: boolean; due_date?: string | null }):
 }
 
 export const URGENCY_COLORS: Record<'high' | 'medium' | 'low', string> = {
-  high: '#FF5C7A',
-  medium: '#FFB84D',
-  low: '#32D583',
+  high: 'var(--state-danger)',
+  medium: 'var(--state-warning)',
+  low: 'var(--state-success)',
 };
+
+/**
+ * A translucent wash of any colour. Written with `color-mix` rather than by
+ * appending an alpha pair to a hex string, because the colours above are CSS
+ * variables now and `var(--state-danger)1F` is not a colour.
+ */
+export function tint(color: string, percent: number): string {
+  return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
+}
 
 /** A stable colour per course, so the same course keeps its colour across
  *  screens without anyone hardcoding a palette per course name. */
-const COURSE_PALETTE = ['#7C6CFF', '#00D9FF', '#32D583', '#FFB84D', '#FF5C7A', '#9C91FF', '#4ECDC4', '#FF9F68'];
+const COURSE_PALETTE = ['#7C6CFF', '#34E0FF', '#3DDC97', '#FFB84D', '#FF5C7A', '#9C91FF', '#4ECDC4', '#FF9F68'];
 
 export function courseColor(key: string): string {
   let hash = 0;
@@ -116,7 +128,7 @@ export function initials(name: string): string {
 /** Human-readable display name from a VOLP username/email. */
 export function displayName(username: string): string {
   const local = (username || '').split('@')[0];
-  const words = local.replace(/[._\-]+/g, ' ').replace(/\d+/g, '').trim();
+  const words = local.replace(/[._-]+/g, ' ').replace(/\d+/g, '').trim();
   if (!words) return username || 'Student';
   return words
     .split(/\s+/)

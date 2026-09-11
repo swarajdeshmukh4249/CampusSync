@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowUpDown, Calendar, CheckCircle, Clock, ExternalLink, FileText,
+  ArrowUpDown, Calendar, CheckCircle, ChevronDown, Clock, ExternalLink, FileText,
   Paperclip, RefreshCw, Upload,
 } from 'lucide-react';
 import { API_BASE, api } from '../api';
@@ -11,12 +11,13 @@ import Button from './ui/Button';
 import DataState from './ui/DataState';
 import AppShell from './ui/AppShell';
 import type { Page } from './ui/AppShell';
+import { Badge, Empty } from './ui/Bits';
 import ScheduleSubmissionModal from './ScheduleSubmissionModal';
 import { useApiData } from '../hooks/useApiData';
 import { useNotifications } from '../hooks/useNotifications';
 import {
-  assignmentStatus, formatDateTime, STATUS_COLORS, timeAgo, timeRemaining,
-  URGENCY_COLORS, urgency,
+  assignmentStatus, courseColor, formatDateTime, STATUS_COLORS, timeAgo, timeRemaining,
+  tint, URGENCY_COLORS, urgency,
 } from '../lib/format';
 
 interface AssignmentsProps {
@@ -34,6 +35,13 @@ const SORT_LABELS: Record<SortBy, string> = {
   due: 'Deadline',
   course: 'Course',
   urgency: 'Urgency',
+};
+
+const FILTER_COLORS: Record<Filter, string> = {
+  all: 'var(--color-accent)',
+  pending: 'var(--color-warning)',
+  submitted: 'var(--color-success)',
+  overdue: 'var(--color-danger)',
 };
 
 export default function Assignments({ userId, onNavigate, theme, onThemeToggle }: AssignmentsProps) {
@@ -99,49 +107,61 @@ export default function Assignments({ userId, onNavigate, theme, onThemeToggle }
       theme={theme}
       onThemeToggle={onThemeToggle}
       title="Assignments"
-      icon={<FileText size={20} />}
+      icon={<FileText size={18} />}
       notifications={notifications}
       search={{ value: query, onChange: setQuery, placeholder: 'Search assignments…' }}
       onBack={{ label: 'Dashboard', onClick: () => onNavigate('dashboard') }}
-      actions={
+      eyebrow="Every piece of work"
+      heading="Assignments"
+      subheading={`Synced from VOLP${data?.last_sync ? ` · last synced ${timeAgo(data.last_sync)}` : ''}`}
+      headActions={
         <Button
-          variant="ghost"
+          variant="secondary"
           size="sm"
           onClick={handleSync}
           disabled={syncing}
           icon={<RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />}
           iconPosition="left"
         >
-          {syncing ? 'Syncing' : 'Sync'}
+          {syncing ? 'Syncing' : 'Sync VOLP'}
         </Button>
       }
     >
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-        <h1 className="text-3xl font-semibold mb-2">Assignments</h1>
-        <p className="text-[var(--text-secondary)]">
-          Everything synced from VOLP{data?.last_sync ? ` · last synced ${timeAgo(data.last_sync)}` : ''}
-        </p>
-      </motion.div>
-
+      {/* Filter bar. Each filter carries the colour it filters for, so the
+          control doubles as a legend for the list below it. */}
       <div className="flex flex-wrap items-center gap-2 mb-6">
-        {(['all', 'pending', 'submitted', 'overdue'] as Filter[]).map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              filter === f
-                ? 'bg-[var(--color-accent)] text-white'
-                : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'
-            }`}
-          >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
-            <span className="ml-2 opacity-70">{counts[f]}</span>
-          </button>
-        ))}
+        <div className="flex flex-wrap items-center gap-1.5 p-1.5 rounded-full bg-[var(--bg-sunken)] border border-[var(--border-color)]">
+          {(['all', 'pending', 'submitted', 'overdue'] as Filter[]).map(f => {
+            const active = filter === f;
+            return (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                aria-pressed={active}
+                className="relative px-4 py-2 rounded-full text-[13px] font-medium transition-colors"
+                style={{ color: active ? '#fff' : 'var(--text-secondary)' }}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="assignment-filter-pill"
+                    className="absolute inset-0 rounded-full -z-10"
+                    style={{
+                      background: `linear-gradient(120deg, ${FILTER_COLORS[f]}, ${tint(FILTER_COLORS[f], 68)})`,
+                      boxShadow: `0 4px 16px ${tint(FILTER_COLORS[f], 34)}`,
+                    }}
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                  />
+                )}
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+                <span className="ml-2 opacity-70 numeric">{counts[f]}</span>
+              </button>
+            );
+          })}
+        </div>
 
         <div className="ml-auto">
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             icon={<ArrowUpDown size={15} />}
             iconPosition="left"
@@ -161,145 +181,190 @@ export default function Assignments({ userId, onNavigate, theme, onThemeToggle }
         error={error}
         onRetry={reload}
         loadingMessage="Loading your assignments…"
+        skeletonRows={5}
       />
 
       {!loading && !error && (
-        <>
-          {visible.length === 0 ? (
-            <Card variant="glass" className="py-12 text-center">
-              <p className="text-[var(--text-secondary)]">
-                {assignments.length === 0
-                  ? 'No assignments synced from VOLP yet. Try Sync above.'
-                  : query
-                    ? `Nothing matches “${query}”.`
-                    : `No ${filter} assignments.`}
-              </p>
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              {visible.map(a => {
-                const status = assignmentStatus(a);
-                const level = urgency(a);
-                const isOpen = expanded === a.assignment_id;
-                return (
-                  <Card key={a.assignment_id} variant="glass" className="group">
-                    <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+        visible.length === 0 ? (
+          <Empty
+            icon={<FileText size={22} />}
+            title={assignments.length === 0 ? 'Nothing synced yet' : 'No match'}
+            body={
+              assignments.length === 0
+                ? 'CampusSync has not pulled any assignment from VOLP. Hit “Sync VOLP” above.'
+                : query
+                  ? `Nothing matches “${query}”.`
+                  : `You have no ${filter} assignments.`
+            }
+          />
+        ) : (
+          <div className="space-y-2.5">
+            {visible.map((a, i) => {
+              const status = assignmentStatus(a);
+              const level = urgency(a);
+              const isOpen = expanded === a.assignment_id;
+              const accent = status === 'submitted' ? STATUS_COLORS.submitted : URGENCY_COLORS[level];
+
+              return (
+                <motion.div
+                  key={a.assignment_id}
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(i, 10) * 0.03, duration: 0.4 }}
+                >
+                  <Card variant="glass" padding="md">
+                    <div className="flex gap-4">
+                      {/* Status spine. Scanning a long list is a colour task
+                          before it is a reading task. */}
+                      <span
+                        className="w-1 rounded-full shrink-0 self-stretch"
+                        style={{ backgroundColor: accent }}
+                      />
+
                       <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-2">
-                          <Badge color={URGENCY_COLORS[level]}>{level}</Badge>
-                          <Badge color={STATUS_COLORS[status]}>{status}</Badge>
-                          {a.assignment_type && a.assignment_type !== 'general' && (
-                            <Badge color="#7C6CFF">{a.assignment_type.replace(/_/g, ' ')}</Badge>
-                          )}
-                          {a.max_marks > 0 && (
-                            <span className="text-xs text-[var(--text-secondary)]">
-                              {a.max_marks} marks
-                            </span>
-                          )}
-                        </div>
+                        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 mb-2.5">
+                              <Badge color={STATUS_COLORS[status]}>{status}</Badge>
+                              {status !== 'submitted' && <Badge color={URGENCY_COLORS[level]}>{level}</Badge>}
+                              {a.assignment_type && a.assignment_type !== 'general' && (
+                                <Badge color="var(--state-accent)">{a.assignment_type.replace(/_/g, ' ')}</Badge>
+                              )}
+                              {a.max_marks > 0 && (
+                                <span className="text-xs text-[var(--text-tertiary)]">{a.max_marks} marks</span>
+                              )}
+                            </div>
 
-                        <h3 className="text-lg font-semibold mb-1">{a.assignment_name}</h3>
-                        <p className="text-sm text-[var(--text-secondary)] mb-3">{a.course_name}</p>
+                            <h3 className="text-[17px] font-semibold tracking-[-0.02em] mb-1.5">
+                              {a.assignment_name}
+                            </h3>
+                            <p className="text-[13px] mb-3 flex items-center gap-1.5">
+                              <span
+                                className="w-1.5 h-1.5 rounded-full"
+                                style={{ backgroundColor: courseColor(a.course_name) }}
+                              />
+                              <span className="text-[var(--text-secondary)]">{a.course_name}</span>
+                            </p>
 
-                        {a.description ? (
-                          <p
-                            className={`text-sm text-[var(--text-secondary)] mb-3 whitespace-pre-line ${
-                              isOpen ? '' : 'line-clamp-2'
-                            }`}
-                          >
-                            {a.description}
-                          </p>
-                        ) : (
-                          <p className="text-sm text-[var(--text-secondary)] mb-3 italic">
-                            No question text synced from VOLP for this assignment.
-                          </p>
-                        )}
+                            {a.description ? (
+                              <p
+                                className={`text-[13.5px] text-[var(--text-secondary)] mb-3 whitespace-pre-line leading-relaxed ${
+                                  isOpen ? '' : 'line-clamp-2'
+                                }`}
+                              >
+                                {a.description}
+                              </p>
+                            ) : (
+                              <p className="text-[13px] text-[var(--text-tertiary)] mb-3 italic">
+                                No question text synced from VOLP for this assignment.
+                              </p>
+                            )}
 
-                        <div className="flex flex-wrap items-center gap-4 text-sm">
-                          {a.due_date ? (
-                            <>
-                              {/* A submitted assignment is not "Overdue" just
-                                  because its deadline has passed. */}
-                              {status !== 'submitted' && (
-                                <span className="flex items-center gap-2 text-[var(--text-secondary)]">
-                                  <Clock size={14} />
-                                  {timeRemaining(a.due_date)}
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
+                              {a.due_date ? (
+                                <>
+                                  {/* A submitted assignment is not "Overdue" just
+                                      because its deadline has passed. */}
+                                  {status !== 'submitted' && (
+                                    <span
+                                      className="numeric font-medium flex items-center gap-1.5"
+                                      style={{ color: URGENCY_COLORS[level] }}
+                                    >
+                                      <Clock size={14} />
+                                      {timeRemaining(a.due_date)}
+                                    </span>
+                                  )}
+                                  <span className="flex items-center gap-1.5 text-[var(--text-secondary)]">
+                                    <Calendar size={14} />
+                                    {formatDateTime(a.due_date)}
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="flex items-center gap-1.5 text-[var(--text-tertiary)]">
+                                  <Calendar size={14} />
+                                  No deadline set on VOLP
                                 </span>
                               )}
-                              <span className="flex items-center gap-2 text-[var(--text-secondary)]">
-                                <Calendar size={14} />
-                                {formatDateTime(a.due_date)}
-                              </span>
-                            </>
-                          ) : (
-                            <span className="flex items-center gap-2 text-[var(--text-secondary)]">
-                              <Calendar size={14} />
-                              No deadline set on VOLP
-                            </span>
-                          )}
-                          {a.submission_date && (
-                            <span className="flex items-center gap-2 text-[var(--color-success)]">
-                              <CheckCircle size={14} />
-                              Submitted {formatDateTime(a.submission_date)}
-                            </span>
-                          )}
-                        </div>
+                              {a.submission_date && (
+                                <span className="flex items-center gap-1.5 text-[var(--color-success)]">
+                                  <CheckCircle size={14} />
+                                  Submitted {formatDateTime(a.submission_date)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
 
-                        {isOpen && (
-                          <div className="mt-4 pt-4 border-t border-[var(--border-color)] flex flex-wrap gap-4 text-sm text-[var(--text-secondary)]">
-                            {a.start_date && <span>Opens {formatDateTime(a.start_date)}</span>}
-                            {a.download_url && (
-                              <a
-                                href={`${API_BASE}${a.download_url}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 text-[var(--color-accent)] hover:underline"
+                          <div className="flex flex-wrap gap-2 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setExpanded(isOpen ? null : a.assignment_id)}
+                              icon={
+                                <ChevronDown
+                                  size={14}
+                                  className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
+                                />
+                              }
+                            >
+                              Details
+                            </Button>
+
+                            {status !== 'submitted' && (
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                icon={<Upload size={14} />}
+                                iconPosition="left"
+                                onClick={() => setScheduling(a)}
                               >
-                                <Paperclip size={14} /> Question paper
-                              </a>
-                            )}
-                            {a.volp_url && (
-                              <a
-                                href={a.volp_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 text-[var(--color-accent)] hover:underline"
-                              >
-                                <ExternalLink size={14} /> Open on VOLP
-                              </a>
+                                Submit
+                              </Button>
                             )}
                           </div>
-                        )}
-                      </div>
+                        </div>
 
-                      <div className="flex flex-wrap gap-2 lg:ml-4 shrink-0">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setExpanded(isOpen ? null : a.assignment_id)}
-                        >
-                          {isOpen ? 'Hide details' : 'View details'}
-                        </Button>
-
-                        {status !== 'submitted' && (
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            icon={<Upload size={14} />}
-                            iconPosition="left"
-                            onClick={() => setScheduling(a)}
-                          >
-                            Submit
-                          </Button>
-                        )}
+                        <AnimatePresence>
+                          {isOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="mt-4 pt-4 border-t border-[var(--border-color)] flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-[var(--text-secondary)]">
+                                {a.start_date && <span>Opens {formatDateTime(a.start_date)}</span>}
+                                {a.download_url && (
+                                  <a
+                                    href={`${API_BASE}${a.download_url}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 text-[var(--color-accent)] hover:underline"
+                                  >
+                                    <Paperclip size={14} /> Question paper
+                                  </a>
+                                )}
+                                {a.volp_url && (
+                                  <a
+                                    href={a.volp_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 text-[var(--color-accent)] hover:underline"
+                                  >
+                                    <ExternalLink size={14} /> Open on VOLP
+                                  </a>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
                     </div>
                   </Card>
-                );
-              })}
-            </div>
-          )}
-        </>
+                </motion.div>
+              );
+            })}
+          </div>
+        )
       )}
 
       <AnimatePresence>
@@ -313,16 +378,5 @@ export default function Assignments({ userId, onNavigate, theme, onThemeToggle }
         )}
       </AnimatePresence>
     </AppShell>
-  );
-}
-
-function Badge({ color, children }: { color: string; children: React.ReactNode }) {
-  return (
-    <span
-      className="text-xs px-2 py-1 rounded-full uppercase tracking-wider font-medium"
-      style={{ backgroundColor: `${color}20`, color }}
-    >
-      {children}
-    </span>
   );
 }

@@ -1,0 +1,321 @@
+/**
+ * The signed-in chrome. Everything here floats over the 3D stage, so nothing
+ * is a full-width opaque bar — the nav is a capsule, the page is a column,
+ * and the scene stays visible down both margins.
+ */
+
+.shell {
+  position: relative;
+  min-height: 100svh;
+  color: var(--text-primary);
+  background: transparent;
+}
+
+/* --- Floating nav capsule ---------------------------------------------- */
+
+.shell__nav {
+  position: fixed;
+  z-index: var(--z-nav);
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(1320px, calc(100% - 24px));
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-full);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  box-shadow: var(--glass-edge), var(--shadow-lg);
+}
+
+.shell__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.shell__mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  color: #fff;
+  background: var(--gradient-orbit);
+  box-shadow: 0 6px 18px rgba(124, 108, 255, 0.34);
+}
+
+.shell__title {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+/* Segmented control. The active pill slides rather than cutting, which keeps
+   the nav feeling like one object instead of six buttons. */
+.shell__segments {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  margin: 0 auto;
+  border-radius: var(--radius-full);
+  background: var(--bg-sunken);
+}
+
+.shell__segment {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color var(--transition-fast);
+}
+
+.shell__segment:hover { color: var(--text-primary); }
+.shell__segment[data-active='true'] { color: #fff; }
+
+[data-theme='light'] .shell__segment[data-active='true'] { color: #fff; }
+
+.shell__segment-pill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--radius-full);
+  background: var(--gradient-action);
+  box-shadow: 0 4px 16px rgba(124, 108, 255, 0.36);
+}
+
+.shell__segment-label { display: inline; }
+
+.shell__tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.shell__search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.shell__search svg {
+  position: absolute;
+  left: 11px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.shell__search input {
+  width: 190px;
+  padding: 8px 12px 8px 33px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  background: var(--bg-sunken);
+  color: var(--text-primary);
+  font-size: 13px;
+  transition: width var(--transition-base), border-color var(--transition-base),
+              background var(--transition-base);
+}
+
+.shell__search input::placeholder { color: var(--text-tertiary); }
+
+.shell__search input:focus {
+  width: 240px;
+  outline: none;
+  border-color: rgba(124, 108, 255, 0.5);
+  background: var(--bg-surface);
+}
+
+.shell__icon-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: color var(--transition-fast), background var(--transition-fast),
+              border-color var(--transition-fast);
+}
+
+.shell__icon-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border-color: var(--border-color);
+}
+
+.shell__icon-btn[data-active='true'] {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+
+.shell__badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 99px;
+  background: var(--color-danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  box-shadow: 0 0 0 2px var(--bg-primary);
+}
+
+/* --- Notification panel ------------------------------------------------- */
+
+.shell__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: min(340px, calc(100vw - 32px));
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--bg-primary) 92%, transparent);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  box-shadow: var(--glass-edge), var(--shadow-xl);
+}
+
+.shell__panel-head {
+  padding: 10px 12px 8px;
+  color: var(--text-tertiary);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.shell__panel button {
+  display: flex;
+  gap: 11px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.shell__panel button:hover { background: var(--bg-surface); }
+
+/* --- Page body ---------------------------------------------------------- */
+
+.shell__main {
+  position: relative;
+  padding: 104px max(4vw, 20px) 120px;
+}
+
+.shell__container {
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+.shell__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.shell__head h1 {
+  margin: 6px 0 0;
+  font-size: clamp(28px, 3.4vw, 42px);
+  line-height: 1.06;
+  letter-spacing: -0.04em;
+  font-weight: 600;
+}
+
+.shell__head p {
+  margin: 10px 0 0;
+  max-width: 560px;
+  color: var(--text-secondary);
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+/* --- Mobile tab bar ------------------------------------------------------ */
+
+.shell__tabbar {
+  position: fixed;
+  z-index: var(--z-nav);
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+  backdrop-filter: blur(26px) saturate(160%);
+  -webkit-backdrop-filter: blur(26px) saturate(160%);
+  box-shadow: var(--glass-edge), var(--shadow-xl);
+}
+
+.shell__tab {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-tertiary);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.shell__tab[data-active='true'] {
+  color: #fff;
+  background: var(--gradient-action);
+}
+
+@media (max-width: 1180px) {
+  .shell__segment-label { display: none; }
+  .shell__segment { padding: 8px 11px; }
+}
+
+@media (max-width: 900px) {
+  .shell__segments { display: none; }
+  .shell__tabbar { display: flex; }
+  .shell__search input { width: 150px; }
+  .shell__search input:focus { width: 180px; }
+  .shell__main { padding: 92px 18px 118px; }
+}
+
+@media (max-width: 620px) {
+  .shell__title { display: none; }
+  .shell__search { display: none; }
+}

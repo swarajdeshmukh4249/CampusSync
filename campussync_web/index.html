@@ -1,10 +1,31 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>campussync_web</title>
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#04050A" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#F4F5FB" media="(prefers-color-scheme: light)" />
+    <meta
+      name="description"
+      content="CampusSync pulls your VOLP courses, assignments and deadlines into one place, reminds you before they matter, and hands work in at a time you choose."
+    />
+
+    <!-- The whole type scale is drawn on Inter's tighter tracking; without it
+         the headlines fall back to a system face and read noticeably looser. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- The 3D scene lives on Spline's CDN; warming the connection shaves a
+         round trip off the first paint of the stage. -->
+    <link rel="preconnect" href="https://prod.spline.design" crossorigin />
+
+    <title>CampusSync — your campus, in sync</title>
   </head>
   <body>
     <div id="root"></div>
