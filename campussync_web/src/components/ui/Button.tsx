@@ -3,7 +3,13 @@ import type { ReactNode } from 'react';
 
 interface ButtonProps {
   children: ReactNode;
-  variant?: 'primary' | 'secondary' | 'ghost' | 'outline';
+  /**
+   * `primary` is the gradient action — one per view.
+   * `secondary` is glass, for anything that sits over the 3D scene.
+   * `ghost` disappears until hovered; `outline` is the quiet confirm;
+   * `danger` is destructive only.
+   */
+  variant?: 'primary' | 'secondary' | 'ghost' | 'outline' | 'danger';
   size?: 'sm' | 'md' | 'lg';
   className?: string;
   onClick?: () => void;
@@ -16,6 +22,36 @@ interface ButtonProps {
   type?: 'button' | 'submit';
 }
 
+const VARIANTS: Record<NonNullable<ButtonProps['variant']>, string> = {
+  // The gradient sits on a pseudo-less stack: a base gradient plus an inset
+  // top highlight, which is what stops it looking like a flat coloured box
+  // once there is a moving 3D scene behind everything.
+  primary:
+    'text-white bg-[image:var(--gradient-action)] ' +
+    'shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_8px_24px_rgba(124,108,255,0.34)] ' +
+    'hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.34),0_12px_34px_rgba(124,108,255,0.5)] ' +
+    'hover:-translate-y-px',
+  secondary:
+    'text-[var(--text-primary)] bg-[var(--glass-bg)] backdrop-blur-xl ' +
+    'border border-[var(--glass-border)] shadow-[var(--glass-edge)] ' +
+    'hover:bg-[var(--bg-elevated)] hover:border-[var(--border-strong)]',
+  ghost:
+    'text-[var(--text-secondary)] hover:text-[var(--text-primary)] ' +
+    'hover:bg-[var(--bg-surface)]',
+  outline:
+    'border border-[rgba(124,108,255,0.55)] text-[var(--color-accent)] ' +
+    'hover:bg-[var(--color-accent)] hover:border-[var(--color-accent)] hover:text-white',
+  danger:
+    'border border-[rgba(255,92,122,0.45)] text-[var(--color-danger)] ' +
+    'hover:bg-[var(--color-danger)] hover:border-[var(--color-danger)] hover:text-white',
+};
+
+const SIZES: Record<NonNullable<ButtonProps['size']>, string> = {
+  sm: 'px-3.5 py-2 text-[13px] rounded-xl gap-1.5',
+  md: 'px-5 py-2.5 text-[14.5px] rounded-xl gap-2',
+  lg: 'px-7 py-3.5 text-[15.5px] rounded-2xl gap-2.5',
+};
+
 export default function Button({
   children,
   variant = 'primary',
@@ -27,28 +63,21 @@ export default function Button({
   iconPosition = 'right',
   ariaLabel,
   title,
-  type = 'button'
+  type = 'button',
 }: ButtonProps) {
-  const baseStyles = 'font-medium rounded-xl transition-all duration-250 flex items-center justify-center gap-2';
-  
-  const variants = {
-    primary: 'bg-gradient-to-r from-[#796bff] to-[#00cce9] text-white shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:scale-[0.97]',
-    secondary: 'bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-color)] hover:bg-[var(--bg-elevated)] hover:shadow-md',
-    ghost: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]',
-    outline: 'border-2 border-[var(--color-accent)] text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-white'
-  };
-  
-  const sizes = {
-    sm: 'px-4 py-2 text-sm',
-    md: 'px-6 py-3 text-base',
-    lg: 'px-8 py-4 text-lg'
-  };
-  
   return (
     <motion.button
-      whileHover={{ scale: disabled ? 1 : 1.02 }}
-      whileTap={{ scale: disabled ? 1 : 0.97 }}
-      className={`${baseStyles} ${variants[variant]} ${sizes[size]} ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      whileHover={disabled ? undefined : { scale: 1.015 }}
+      whileTap={disabled ? undefined : { scale: 0.975 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+      className={[
+        'font-medium inline-flex items-center justify-center whitespace-nowrap',
+        'transition-[background,border-color,box-shadow,color,transform] duration-200',
+        VARIANTS[variant],
+        SIZES[size],
+        disabled ? 'opacity-45 cursor-not-allowed pointer-events-none' : '',
+        className,
+      ].join(' ')}
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel}

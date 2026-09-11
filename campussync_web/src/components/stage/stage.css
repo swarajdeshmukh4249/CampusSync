@@ -1,0 +1,150 @@
+/**
+ * The 3D layer. Fixed behind everything, never scrolls, never takes a click
+ * unless the active preset says it may.
+ */
+
+.stage {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-stage);
+  overflow: hidden;
+  background: var(--bg-primary);
+  /* Own stacking context so nothing inside can climb over the UI. */
+  isolation: isolate;
+}
+
+/* --- Live scene ------------------------------------------------------- */
+
+.stage__frame {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+  /* Re-framing between pages is the page transition. Keep it long and eased
+     so it reads as a camera move, not a jump cut. */
+  transition:
+    transform var(--transition-stage),
+    opacity var(--transition-stage),
+    filter var(--transition-stage);
+  will-change: transform, opacity;
+  /* Several presets shrink the scene below the viewport. Without this, a
+     scene that paints its own background would show as a hard-edged
+     rectangle floating in the void; feathered, it reads as depth whatever
+     the scene happens to be. */
+  mask-image: radial-gradient(ellipse 78% 78% at 50% 50%, #000 52%, transparent 92%);
+  -webkit-mask-image: radial-gradient(ellipse 78% 78% at 50% 50%, #000 52%, transparent 92%);
+}
+
+.stage__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Light mode gets a lifted, desaturated version of the same scene rather
+     than a second scene — see --stage-* in the design system. */
+  filter: brightness(var(--stage-brightness)) saturate(var(--stage-saturate));
+  transition: filter var(--transition-cinematic);
+  /* Vertical panning always belongs to the page, never to the scene. */
+  touch-action: pan-y;
+}
+
+/* --- Depth field ------------------------------------------------------ *
+ * Atmosphere under the scene, and the entire backdrop when there is no
+ * scene (reduced motion, small screens, a failed load).                   */
+
+.stage__field {
+  position: absolute;
+  inset: -25%;
+  pointer-events: none;
+  transition: opacity var(--transition-stage);
+}
+
+.stage__aurora {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  filter: blur(90px);
+  will-change: transform;
+}
+
+.stage__aurora--violet {
+  width: 52vw;
+  height: 52vw;
+  top: 6%;
+  right: 12%;
+  background: var(--atmosphere-1);
+  animation: stage-drift-a 22s ease-in-out infinite alternate;
+}
+
+.stage__aurora--cyan {
+  width: 42vw;
+  height: 42vw;
+  bottom: 8%;
+  left: 8%;
+  background: var(--atmosphere-2);
+  animation: stage-drift-b 28s ease-in-out infinite alternate;
+}
+
+@keyframes stage-drift-a { to { transform: translate3d(-6%, 8%, 0) scale(1.15); } }
+@keyframes stage-drift-b { to { transform: translate3d(8%, -6%, 0) scale(1.2); } }
+
+/* A faint coordinate grid — gives the void a sense of scale, and quietly
+   signals "this is a system" on the screens where the scene is turned down. */
+.stage__grid {
+  position: absolute;
+  inset: 0;
+  display: block;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(to right, var(--border-color) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border-color) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 45%, #000 10%, transparent 72%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 45%, #000 10%, transparent 72%);
+}
+
+/* With no scene to sit under, the field carries the frame on its own and can
+   afford to be stronger. */
+.stage__field[data-standalone='true'] .stage__aurora { filter: blur(110px); transform: scale(1.1); }
+.stage__field[data-standalone='true'] .stage__grid { opacity: 0.8; }
+
+/* --- Readability layers ----------------------------------------------- */
+
+.stage__veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--stage-veil);
+  transition: opacity var(--transition-stage);
+}
+
+.stage__vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-stage);
+  background:
+    radial-gradient(ellipse 78% 70% at 50% 45%, transparent 34%, var(--bg-primary) 100%);
+}
+
+/* --- Loading ---------------------------------------------------------- */
+
+.stage__loading {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 38%, var(--halo-color) 50%, transparent 62%);
+  background-size: 260% 100%;
+  animation: stage-sweep 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  opacity: 0.35;
+}
+
+@keyframes stage-sweep {
+  0%   { background-position: 160% 0; }
+  100% { background-position: -60% 0; }
+}
+
+/* --- Reduced motion ---------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .stage__aurora { animation: none; }
+  .stage__loading { display: none; }
+}

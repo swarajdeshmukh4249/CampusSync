@@ -8,6 +8,8 @@ import Assignments from './components/Assignments';
 import Calendar from './components/Calendar';
 import Friends from './components/Friends';
 import Settings from './components/Settings';
+import SplineStage from './components/stage/SplineStage';
+import type { StageName } from './components/stage/presets';
 import type { Page as AppPage } from './components/ui/AppShell';
 
 type Page = 'landing' | 'login' | AppPage;
@@ -39,11 +41,37 @@ export default function App() {
     () => (localStorage.getItem('cs_theme') as 'dark' | 'light') || 'dark',
   );
 
+  // How far down the document we are, 0 → 1. The 3D stage forwards this into
+  // the scene so a scroll-driven Spline animation stays in step with the page.
+  const [scrollProgress, setScrollProgress] = useState(0);
+
   // Keep the document in step with the theme so the page background matches
   // even outside the React tree.
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const travel = document.body.scrollHeight - window.innerHeight;
+      setScrollProgress(travel > 0 ? Math.min(1, window.scrollY / travel) : 0);
+    };
+    const onScroll = () => {
+      // One read per frame — the scroll event fires far faster than we can
+      // usefully push a variable into a WebGL scene.
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    measure();
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [currentPage]);
 
   function toggleTheme() {
     setTheme(current => {
@@ -56,6 +84,9 @@ export default function App() {
   function navigateTo(page: Page) {
     setCurrentPage(page);
     localStorage.setItem('cs_page', page);
+    // Every screen but the landing page starts at the top; carrying a scroll
+    // position across a navigation strands you mid-list.
+    if (page !== 'landing') window.scrollTo({ top: 0 });
   }
 
   function handleLoginSuccess(id: number, name: string) {
@@ -85,58 +116,65 @@ export default function App() {
   };
 
   return (
-    <div data-theme={theme}>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={page}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          {page === 'landing' && (
-            <LandingPage onEnter={() => navigateTo(userId ? 'dashboard' : 'login')} theme={theme} onThemeToggle={toggleTheme} />
-          )}
+    <div data-theme={theme} className="app-root">
+      {/* One scene for the whole session. Pages re-frame it; none of them
+          mount their own, so navigating never reloads the 3D. */}
+      <SplineStage stage={page as StageName} theme={theme} scrollProgress={scrollProgress} />
 
-          {page === 'login' && (
-            <LoginPage
-              onLoginSuccess={handleLoginSuccess}
-              onBack={() => navigateTo('landing')}
-              theme={theme}
-              onThemeToggle={toggleTheme}
-            />
-          )}
+      <div className="app-content">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={page}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.42, ease: [0.22, 1, 0.32, 1] }}
+          >
+            {page === 'landing' && (
+              <LandingPage onEnter={() => navigateTo(userId ? 'dashboard' : 'login')} theme={theme} onThemeToggle={toggleTheme} />
+            )}
 
-          {userId !== null && page === 'dashboard' && (
-            <Dashboard
-              userId={userId}
-              username={username}
-              onLogout={handleLogout}
-              onGoToLanding={() => navigateTo('landing')}
-              {...shared}
-            />
-          )}
+            {page === 'login' && (
+              <LoginPage
+                onLoginSuccess={handleLoginSuccess}
+                onBack={() => navigateTo('landing')}
+                theme={theme}
+                onThemeToggle={toggleTheme}
+              />
+            )}
 
-          {userId !== null && page === 'courses' && (
-            <Courses userId={userId} username={username} {...shared} />
-          )}
+            {userId !== null && page === 'dashboard' && (
+              <Dashboard
+                userId={userId}
+                username={username}
+                onLogout={handleLogout}
+                onGoToLanding={() => navigateTo('landing')}
+                {...shared}
+              />
+            )}
 
-          {userId !== null && page === 'assignments' && (
-            <Assignments userId={userId} username={username} {...shared} />
-          )}
+            {userId !== null && page === 'courses' && (
+              <Courses userId={userId} username={username} {...shared} />
+            )}
 
-          {userId !== null && page === 'calendar' && (
-            <Calendar userId={userId} username={username} {...shared} />
-          )}
+            {userId !== null && page === 'assignments' && (
+              <Assignments userId={userId} username={username} {...shared} />
+            )}
 
-          {userId !== null && page === 'friends' && (
-            <Friends userId={userId} username={username} {...shared} />
-          )}
+            {userId !== null && page === 'calendar' && (
+              <Calendar userId={userId} username={username} {...shared} />
+            )}
 
-          {userId !== null && page === 'settings' && (
-            <Settings userId={userId} username={username} onLogout={handleLogout} {...shared} />
-          )}
-        </motion.div>
-      </AnimatePresence>
+            {userId !== null && page === 'friends' && (
+              <Friends userId={userId} username={username} {...shared} />
+            )}
+
+            {userId !== null && page === 'settings' && (
+              <Settings userId={userId} username={username} onLogout={handleLogout} {...shared} />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

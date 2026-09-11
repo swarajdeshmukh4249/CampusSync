@@ -1,206 +1,271 @@
 /**
- * CampusSync Design System
- * Awwwards-level visual language for the Academic Operating System
+ * CampusSync Design System — "Aperture"
+ *
+ * The whole product is designed around one live Spline scene that sits behind
+ * every screen. That forces a rule the old system did not have: nothing is
+ * opaque unless it has to be. Surfaces are glass with a real edge light, the
+ * page background is a deep void that a 3D object can sit inside, and colour
+ * is spent on state (urgent / done / late) rather than on decoration.
+ *
+ * Everything here is a token. If you retune the scene, retune `--stage-*` and
+ * the accents below and the rest of the UI follows.
  */
 
-/* === COLOR PALETTE === */
+/* ============================================================
+   1. PALETTE
+   ============================================================ */
 
 :root {
-  /* Dark Mode Colors */
-  --color-dark-bg: #050609;
-  --color-dark-surface: #0A0D12;
-  --color-dark-elevated: #10151D;
-  --color-dark-text: #FFFFFF;
-  --color-dark-text-secondary: rgba(255, 255, 255, 0.65);
-  
-  /* Light Mode Colors */
-  --color-light-bg: #F7F8FC;
-  --color-light-surface: #FFFFFF;
-  --color-light-surface-secondary: #F0F2F7;
-  --color-light-text: #101218;
-  --color-light-text-secondary: #646A78;
-  
-  /* Accent Colors */
-  --color-accent: #7C6CFF;
+  /* --- Void (dark) ------------------------------------------------------ */
+  --void-900: #04050A;   /* page floor — a hair of indigo, never pure black */
+  --void-800: #070912;
+  --void-700: #0B0E1A;
+  --void-600: #111527;
+
+  /* --- Porcelain (light) ------------------------------------------------ */
+  --porcelain-50:  #FBFBFE;
+  --porcelain-100: #F4F5FB;
+  --porcelain-200: #EAECF5;
+  --porcelain-300: #DCDFEC;
+
+  /* --- Ink -------------------------------------------------------------- */
+  --ink-dark:  #FFFFFF;
+  --ink-light: #0C0E18;
+
+  /* --- Accents ---------------------------------------------------------- *
+   * Violet is the product. Cyan is the sync/signal colour. They are used as
+   * a pair — a single hue reads flat against a 3D scene.                   */
+  --color-accent:       #7C6CFF;
   --color-accent-light: #635BFF;
-  --color-cyan: #00D9FF;
-  --color-cyan-light: #00A8C7;
-  --color-success: #32D583;
+  --color-accent-deep:  #5B4BE8;
+  --color-cyan:         #34E0FF;
+  --color-cyan-light:   #00A8C7;
+
+  /* --- State ------------------------------------------------------------ *
+   * Two sets on purpose. --color-* are the brand values, tuned for the dark
+   * void and used for glows, gradients and fills. --state-* are the same
+   * meanings tuned for *contrast*, and they change with the theme — a mid
+   * amber that sings on near-black is unreadable on porcelain.             */
+  --color-success: #3DDC97;
   --color-warning: #FFB84D;
-  --color-danger: #FF5C7A;
-  
-  /* Gradients */
-  --gradient-primary: linear-gradient(115deg, #796bff, #00cce9);
-  --gradient-accent: linear-gradient(100deg, #fff 18%, #9c91ff 54%, #4dddf4);
-  --gradient-orbit: linear-gradient(135deg, #7c6cff, #00d9ff);
-  --gradient-success: linear-gradient(135deg, #53d3b0, #32D583);
-  
-  /* Typography */
+  --color-danger:  #FF5C7A;
+  --color-info:    #34E0FF;
+
+  /* --- Gradients -------------------------------------------------------- */
+  --gradient-primary: linear-gradient(115deg, #7C6CFF, #34E0FF);
+  --gradient-orbit:   linear-gradient(135deg, #7C6CFF, #34E0FF);
+  /* Anything that carries white text or a white glyph. The decorative
+     gradient lands on a cyan bright enough that white on top of it is
+     effectively unreadable, so actions get their own, bluer, ramp. */
+  --gradient-action:  linear-gradient(118deg, #7C6CFF, #2E86F0);
+  --gradient-accent:  linear-gradient(100deg, #FFFFFF 12%, #B7AEFF 48%, #6FE4FF 92%);
+  --gradient-success: linear-gradient(135deg, #53D3B0, #3DDC97);
+  --gradient-edge:    linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0));
+
+  /* --- Typography ------------------------------------------------------- */
   --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
   --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
-  
-  /* Spacing Scale */
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-  --space-2xl: 48px;
-  --space-3xl: 64px;
-  --space-4xl: 96px;
-  
-  /* Border Radius */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
-  --radius-2xl: 24px;
-  --radius-full: 9999px;
-  
-  /* Shadows */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.16);
-  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.20);
-  --shadow-glow: 0 0 30px rgba(124, 108, 255, 0.38);
-  --shadow-glow-cyan: 0 0 30px rgba(0, 217, 255, 0.38);
-  
-  /* Transitions */
-  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-spring: 600ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  --transition-cinematic: 900ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  
-  /* Z-Index Scale */
-  --z-dropdown: 100;
-  --z-sticky: 200;
-  --z-modal: 300;
-  --z-popover: 400;
-  --z-tooltip: 500;
-  --z-notification: 600;
-  --z-overlay: 700;
+  --font-mono: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, monospace;
+
+  /* --- Spacing ---------------------------------------------------------- */
+  --space-xs: 4px;   --space-sm: 8px;   --space-md: 16px;  --space-lg: 24px;
+  --space-xl: 32px;  --space-2xl: 48px; --space-3xl: 64px; --space-4xl: 96px;
+
+  /* --- Radius ----------------------------------------------------------- */
+  --radius-sm: 10px;  --radius-md: 14px;  --radius-lg: 18px;
+  --radius-xl: 22px;  --radius-2xl: 28px; --radius-full: 9999px;
+
+  /* --- Motion ----------------------------------------------------------- */
+  --transition-fast:      140ms cubic-bezier(0.33, 1, 0.68, 1);
+  --transition-base:      260ms cubic-bezier(0.33, 1, 0.68, 1);
+  --transition-slow:      420ms cubic-bezier(0.33, 1, 0.68, 1);
+  --transition-spring:    600ms cubic-bezier(0.2, 0.9, 0.25, 1);
+  --transition-cinematic: 900ms cubic-bezier(0.2, 0.9, 0.25, 1);
+  /* How long the 3D stage takes to re-frame itself when you change page. */
+  --transition-stage:    1100ms cubic-bezier(0.22, 1, 0.32, 1);
+
+  /* --- Z scale ---------------------------------------------------------- */
+  --z-stage: 0;       --z-content: 1;    --z-dropdown: 100;
+  --z-sticky: 200;    --z-nav: 250;      --z-modal: 300;
+  --z-popover: 400;   --z-tooltip: 500;  --z-notification: 600; --z-overlay: 700;
 }
 
-/* === THEME VARIABLES === */
+/* ============================================================
+   2. THEMES
+   ============================================================ */
 
+:root,
 [data-theme="dark"] {
-  --bg-primary: var(--color-dark-bg);
-  --bg-surface: var(--color-dark-surface);
-  --bg-elevated: var(--color-dark-elevated);
-  --text-primary: var(--color-dark-text);
-  --text-secondary: var(--color-dark-text-secondary);
-  --border-color: rgba(255, 255, 255, 0.12);
-  --glass-bg: rgba(16, 21, 29, 0.65);
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --halo-color: rgba(124, 108, 255, 0.23);
-  --atmosphere-1: rgba(124, 108, 255, 0.23);
-  --atmosphere-2: rgba(0, 217, 255, 0.07);
+  color-scheme: dark;
+
+  --bg-primary:  var(--void-900);
+  --bg-surface:  rgba(255, 255, 255, 0.035);
+  --bg-elevated: rgba(255, 255, 255, 0.06);
+  --bg-sunken:   rgba(0, 0, 0, 0.28);
+
+  --text-primary:   var(--ink-dark);
+  --text-secondary: rgba(255, 255, 255, 0.62);
+  --text-tertiary:  rgba(255, 255, 255, 0.38);
+
+  --border-color:   rgba(255, 255, 255, 0.10);
+  --border-strong:  rgba(255, 255, 255, 0.18);
+
+  /* Glass is the primary surface of this system. */
+  --glass-bg:     rgba(12, 15, 28, 0.52);
+  --glass-solid:  rgba(12, 15, 28, 0.86);
+  --glass-border: rgba(255, 255, 255, 0.11);
+  --glass-blur:   26px;
+  /* A one-pixel highlight along the top edge — this is what makes a panel
+     read as glass rather than as a grey rectangle. */
+  --glass-edge:   inset 0 1px 0 rgba(255, 255, 255, 0.10);
+
+  --state-accent:  #8E80FF;
+  --state-cyan:    #34E0FF;
+  --state-success: #3DDC97;
+  --state-warning: #FFB84D;
+  --state-danger:  #FF7290;
+
+  --halo-color:  rgba(124, 108, 255, 0.30);
+  --atmosphere-1: rgba(124, 108, 255, 0.26);
+  --atmosphere-2: rgba(52, 224, 255, 0.10);
+
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 6px 22px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.50);
+  --shadow-xl: 0 28px 80px rgba(0, 0, 0, 0.58);
+  --shadow-glow:      0 0 34px rgba(124, 108, 255, 0.42);
+  --shadow-glow-cyan: 0 0 34px rgba(52, 224, 255, 0.36);
+
+  /* Stage = the live 3D layer. */
+  --stage-brightness: 1;
+  --stage-saturate:   1.05;
+  --stage-veil:       rgba(4, 5, 10, 0.55);
 }
 
 [data-theme="light"] {
-  --bg-primary: var(--color-light-bg);
-  --bg-surface: var(--color-light-surface);
-  --bg-elevated: var(--color-light-surface-secondary);
-  --text-primary: var(--color-light-text);
-  --text-secondary: var(--color-light-text-secondary);
-  --border-color: rgba(16, 18, 24, 0.10);
-  --glass-bg: rgba(255, 255, 255, 0.68);
-  --glass-border: rgba(16, 18, 24, 0.08);
-  --halo-color: rgba(99, 91, 255, 0.16);
+  color-scheme: light;
+
+  --bg-primary:  var(--porcelain-100);
+  --bg-surface:  rgba(255, 255, 255, 0.62);
+  --bg-elevated: rgba(255, 255, 255, 0.86);
+  --bg-sunken:   rgba(12, 14, 24, 0.04);
+
+  --text-primary:   var(--ink-light);
+  --text-secondary: rgba(12, 14, 24, 0.62);
+  --text-tertiary:  rgba(12, 14, 24, 0.42);
+
+  --border-color:  rgba(12, 14, 24, 0.10);
+  --border-strong: rgba(12, 14, 24, 0.18);
+
+  --glass-bg:     rgba(255, 255, 255, 0.62);
+  --glass-solid:  rgba(255, 255, 255, 0.92);
+  --glass-border: rgba(12, 14, 24, 0.08);
+  --glass-blur:   22px;
+  --glass-edge:   inset 0 1px 0 rgba(255, 255, 255, 0.85);
+
+  /* Darkened so a status colour is still readable as text on porcelain. */
+  --color-accent: #5B4BE8;
+  --color-cyan:   #0089A8;
+
+  --state-accent:  #5B4BE8;
+  --state-cyan:    #0089A8;
+  --state-success: #0E9F6E;
+  --state-warning: #B26A00;
+  --state-danger:  #D22D51;
+
+  --halo-color:   rgba(99, 91, 255, 0.18);
   --atmosphere-1: rgba(99, 91, 255, 0.16);
-  --atmosphere-2: rgba(0, 168, 199, 0.08);
+  --atmosphere-2: rgba(0, 168, 199, 0.10);
+
+  --shadow-sm: 0 2px 8px rgba(20, 24, 48, 0.06);
+  --shadow-md: 0 6px 20px rgba(20, 24, 48, 0.08);
+  --shadow-lg: 0 16px 42px rgba(20, 24, 48, 0.10);
+  --shadow-xl: 0 28px 72px rgba(20, 24, 48, 0.14);
+  --shadow-glow:      0 0 30px rgba(124, 108, 255, 0.26);
+  --shadow-glow-cyan: 0 0 30px rgba(52, 224, 255, 0.22);
+
+  /* The scene was authored on a dark ground; in light mode it is lifted and
+     desaturated so it sits behind porcelain panels without muddying them. */
+  --stage-brightness: 1.5;
+  --stage-saturate:   0.55;
+  --stage-veil:       rgba(244, 245, 251, 0.62);
 }
 
-/* === TYPOGRAPHY SCALE === */
+/* ============================================================
+   3. TYPE SCALE
+   ============================================================ */
 
 .text-display-xl {
-  font-size: clamp(64px, 9vw, 150px);
-  line-height: 0.84;
-  letter-spacing: -0.085em;
-  font-weight: 650;
+  font-size: clamp(58px, 8.4vw, 148px);
+  line-height: 0.86;
+  letter-spacing: -0.055em;
+  font-weight: 600;
 }
 
 .text-display-lg {
-  font-size: clamp(46px, 5.5vw, 88px);
-  line-height: 0.9;
-  letter-spacing: -0.07em;
-  font-weight: 650;
-}
-
-.text-display-md {
-  font-size: clamp(32px, 4vw, 56px);
-  line-height: 1.1;
+  font-size: clamp(42px, 5.4vw, 86px);
+  line-height: 0.92;
   letter-spacing: -0.05em;
   font-weight: 600;
 }
 
-.text-h1 {
-  font-size: 28px;
-  line-height: 1.2;
-  letter-spacing: -0.03em;
+.text-display-md {
+  font-size: clamp(30px, 3.8vw, 54px);
+  line-height: 1.06;
+  letter-spacing: -0.04em;
   font-weight: 600;
 }
 
-.text-h2 {
-  font-size: 24px;
-  line-height: 1.3;
-  letter-spacing: -0.02em;
-  font-weight: 600;
-}
+.text-h1 { font-size: 28px; line-height: 1.18; letter-spacing: -0.03em; font-weight: 600; }
+.text-h2 { font-size: 22px; line-height: 1.26; letter-spacing: -0.02em; font-weight: 600; }
+.text-h3 { font-size: 18px; line-height: 1.36; letter-spacing: -0.015em; font-weight: 600; }
 
-.text-h3 {
-  font-size: 20px;
-  line-height: 1.4;
-  letter-spacing: -0.01em;
-  font-weight: 600;
-}
-
-.text-body-lg {
-  font-size: 18px;
-  line-height: 1.6;
-  font-weight: 400;
-}
-
-.text-body {
-  font-size: 16px;
-  line-height: 1.5;
-  font-weight: 400;
-}
-
-.text-body-sm {
-  font-size: 14px;
-  line-height: 1.5;
-  font-weight: 400;
-}
-
-.text-caption {
-  font-size: 12px;
-  line-height: 1.4;
-  font-weight: 500;
-}
+.text-body-lg { font-size: 17px; line-height: 1.6; }
+.text-body    { font-size: 15px; line-height: 1.55; }
+.text-body-sm { font-size: 13.5px; line-height: 1.5; }
+.text-caption { font-size: 12px; line-height: 1.4; font-weight: 500; }
 
 .text-label {
   font-size: 10px;
   line-height: 1.2;
-  letter-spacing: 0.18em;
-  font-weight: 700;
+  letter-spacing: 0.2em;
+  font-weight: 600;
   text-transform: uppercase;
+  color: var(--text-tertiary);
 }
 
-/* === UTILITY CLASSES === */
+/* Numbers in metric tiles: tabular so a row of counters does not jitter. */
+.numeric {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+
+/* ============================================================
+   4. SURFACES
+   ============================================================ */
 
 .glass {
   background: var(--glass-bg);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
   border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge);
 }
 
 .glass-strong {
-  background: color-mix(in srgb, var(--bg-primary) 65%, transparent);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--glass-solid);
+  backdrop-filter: blur(calc(var(--glass-blur) + 8px)) saturate(150%);
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) + 8px)) saturate(150%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-edge), var(--shadow-lg);
+}
+
+/* A panel that has to stay readable no matter what the scene does behind it
+   — forms, modals, anything with small text. */
+.panel-opaque {
+  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+  backdrop-filter: blur(calc(var(--glass-blur) + 14px));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) + 14px));
   border: 1px solid var(--border-color);
 }
 
@@ -211,140 +276,83 @@
   -webkit-background-clip: text;
 }
 
-.glow-accent {
-  box-shadow: var(--shadow-glow);
+[data-theme="light"] .gradient-text {
+  background: linear-gradient(100deg, #1B1D2E 6%, #5B4BE8 52%, #0093B4 96%);
+  background-clip: text;
+  -webkit-background-clip: text;
 }
 
-.glow-cyan {
-  box-shadow: var(--shadow-glow-cyan);
+.glow-accent { box-shadow: var(--shadow-glow); }
+.glow-cyan   { box-shadow: var(--shadow-glow-cyan); }
+
+/* Hairline divider that fades at both ends — reads as light, not as a border. */
+.rule-fade {
+  height: 1px;
+  border: 0;
+  background: linear-gradient(90deg, transparent, var(--border-strong) 18%, var(--border-strong) 82%, transparent);
 }
 
-/* === ANIMATION UTILITIES === */
+/* ============================================================
+   5. MOTION UTILITIES
+   ============================================================ */
 
-.animate-float {
-  animation: float 6s ease-in-out infinite;
+.animate-float { animation: float 6s ease-in-out infinite; }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-18px); } }
+
+.animate-pulse-slow { animation: pulse-slow 4s ease-in-out infinite; }
+@keyframes pulse-slow { 0%, 100% { opacity: 1; } 50% { opacity: 0.65; } }
+
+.animate-spin-slow { animation: spin 22s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.animate-drift { animation: drift 18s ease-in-out infinite alternate; }
+@keyframes drift { to { transform: translate3d(2%, -2.5%, 0) scale(1.07); } }
+
+.hover-lift { transition: transform var(--transition-base), box-shadow var(--transition-base); }
+.hover-lift:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+
+.hover-glow { transition: box-shadow var(--transition-base); }
+.hover-glow:hover { box-shadow: var(--shadow-glow); }
+
+.hover-scale { transition: transform var(--transition-fast); }
+.hover-scale:hover { transform: scale(1.02); }
+
+.active-scale { transition: transform var(--transition-fast); }
+.active-scale:active { transform: scale(0.97); }
+
+.perspective-1000 { perspective: 1000px; }
+.preserve-3d { transform-style: preserve-3d; }
+.rotate-3d { transition: transform var(--transition-base); }
+.rotate-3d:hover { transform: rotateX(2deg) rotateY(2deg); }
+
+/* ============================================================
+   6. SCROLLBAR
+   ============================================================ */
+
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--color-accent); }
+
+/* ============================================================
+   7. LOADING
+   ============================================================ */
+
+.skeleton {
+  background: linear-gradient(90deg,
+    var(--bg-surface) 25%, var(--bg-elevated) 50%, var(--bg-surface) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s ease-in-out infinite;
+  border-radius: var(--radius-md);
+}
+@keyframes skeleton-loading {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-20px); }
-}
-
-.animate-pulse-slow {
-  animation: pulse-slow 4s ease-in-out infinite;
-}
-
-@keyframes pulse-slow {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
-.animate-spin-slow {
-  animation: spin 20s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* === MICRO-INTERACTIONS === */
-
-.hover-lift {
-  transition: transform var(--transition-base), box-shadow var(--transition-base);
-}
-
-.hover-lift:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-lg);
-}
-
-.hover-glow {
-  transition: box-shadow var(--transition-base);
-}
-
-.hover-glow:hover {
-  box-shadow: var(--shadow-glow);
-}
-
-.hover-scale {
-  transition: transform var(--transition-fast);
-}
-
-.hover-scale:hover {
-  transform: scale(1.02);
-}
-
-.active-scale {
-  transition: transform var(--transition-fast);
-}
-
-.active-scale:active {
-  transform: scale(0.97);
-}
-
-/* === 3D EFFECTS === */
-
-.perspective-1000 {
-  perspective: 1000px;
-}
-
-.preserve-3d {
-  transform-style: preserve-3d;
-}
-
-.rotate-3d {
-  transition: transform var(--transition-base);
-}
-
-.rotate-3d:hover {
-  transform: rotateX(2deg) rotateY(2deg);
-}
-
-/* === SCROLLBAR STYLING === */
-
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 3px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--color-accent);
-}
-
-/* === RESPONSIVE UTILITIES === */
-
-@media (max-width: 768px) {
-  .text-display-xl {
-    font-size: clamp(48px, 12vw, 80px);
-  }
-  
-  .text-display-lg {
-    font-size: clamp(36px, 8vw, 56px);
-  }
-}
-
-/* === ACCESSIBILITY === */
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
-/* === FOCUS STATES === */
+/* ============================================================
+   8. ACCESSIBILITY
+   ============================================================ */
 
 .focus-ring:focus-visible {
   outline: 2px solid var(--color-cyan);
@@ -352,19 +360,16 @@
   border-radius: var(--radius-sm);
 }
 
-/* === LOADING STATES === */
-
-.skeleton {
-  background: linear-gradient(90deg, 
-    var(--bg-surface) 25%, 
-    var(--bg-elevated) 50%, 
-    var(--bg-surface) 75%
-  );
-  background-size: 200% 100%;
-  animation: skeleton-loading 1.5s ease-in-out infinite;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
-@keyframes skeleton-loading {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+@media (max-width: 768px) {
+  .text-display-xl { font-size: clamp(44px, 12vw, 76px); }
+  .text-display-lg { font-size: clamp(34px, 8vw, 54px); }
 }
